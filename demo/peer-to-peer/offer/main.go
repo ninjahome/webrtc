@@ -107,9 +107,9 @@ func main() {
 	})
 	go func() { panic(http.ListenAndServe(*offerAddr, nil)) }()
 
-	var oggFile, oggErr = oggwriter.New("output_offer.ogg", 48000, 2)
+	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("output.ivf")
+	var ivfFile, ivfErr = ivfwriter.New("output_offer.ivf")
 	internal.Must(ivfErr)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
