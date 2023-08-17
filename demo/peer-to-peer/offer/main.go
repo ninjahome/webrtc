@@ -66,6 +66,10 @@ func main() {
 			fmt.Printf("cannot close peerConnection: %v\n", cErr)
 		}
 	}()
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	internal.Must(err)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+	internal.Must(err)
 
 	offer, err2 := peerConnection.CreateOffer(nil)
 	internal.Must(err2)
@@ -87,11 +91,6 @@ func main() {
 
 	})
 	go func() { panic(http.ListenAndServe(*offerAddr, nil)) }()
-
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-	internal.Must(err)
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-	internal.Must(err)
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
