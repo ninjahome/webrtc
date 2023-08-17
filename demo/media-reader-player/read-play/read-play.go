@@ -79,7 +79,7 @@ func main() {
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("output.ivf") //, ivfwriter.WithCodec(webrtc.MimeTypeAV1))
+	var ivfFile, ivfErr = ivfwriter.New("output_read_play.ivf") //, ivfwriter.WithCodec(webrtc.MimeTypeAV1))
 	internal.Must(ivfErr)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {

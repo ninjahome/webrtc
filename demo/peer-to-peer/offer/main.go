@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
-	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	"github.com/pion/mediadevices/pkg/codec/vpx"
@@ -48,16 +46,7 @@ func main() {
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
 	codecSelector.Populate(m)
-
-	i := &interceptor.Registry{}
-
-	intervalPliFactory, ipErr := intervalpli.NewReceiverInterceptor()
-	internal.Must(ipErr)
-	i.Add(intervalPliFactory)
-	var rgeErr = webrtc.RegisterDefaultInterceptors(m, i)
-	internal.Must(rgeErr)
-
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
 
 	var peerConnection, err = api.NewPeerConnection(config)
 	internal.Must(err)
@@ -118,7 +107,7 @@ func main() {
 	})
 	go func() { panic(http.ListenAndServe(*offerAddr, nil)) }()
 
-	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
+	var oggFile, oggErr = oggwriter.New("output_offer.ogg", 48000, 2)
 	internal.Must(oggErr)
 	var ivfFile, ivfErr = ivfwriter.New("output.ivf")
 	internal.Must(ivfErr)
