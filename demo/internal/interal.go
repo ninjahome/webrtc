@@ -76,8 +76,9 @@ func SaveToDisk(i media.Writer, track *webrtc.TrackRemote) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("------>>>writing rtpPacket:", rtpPacket.PayloadType)
+		//fmt.Println("------>>>writing rtpPacket:")
 		if err := i.WriteRTP(rtpPacket); err != nil {
+			fmt.Println(rtpPacket.String())
 			panic(err)
 		}
 	}
