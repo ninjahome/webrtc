@@ -10,6 +10,8 @@ import (
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	"github.com/pion/mediadevices/pkg/codec/vpx"
 	"github.com/pion/mediadevices/pkg/codec/x264"
+	_ "github.com/pion/mediadevices/pkg/driver/camera"
+	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/webrtc/v3"
@@ -93,7 +95,7 @@ func main() {
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("output.ivf") //, ivfwriter.WithCodec(webrtc.MimeTypeAV1))
+	var ivfFile, ivfErr = ivfwriter.New("output.ivf")
 	internal.Must(ivfErr)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
