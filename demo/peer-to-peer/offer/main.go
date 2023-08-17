@@ -71,6 +71,32 @@ func main() {
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
 	internal.Must(err)
 
+	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
+		Video: func(c *mediadevices.MediaTrackConstraints) {
+			c.FrameFormat = prop.FrameFormat(frame.FormatI420)
+			c.Width = prop.Int(640)
+			c.Height = prop.Int(480)
+		},
+		Audio: func(c *mediadevices.MediaTrackConstraints) {
+		},
+		Codec: codecSelector,
+	})
+	internal.Must(err)
+
+	for _, track := range mediaStream.GetTracks() {
+		track.OnEnded(func(err error) {
+			fmt.Printf("Track (ID: %s) ended with error: %v\n",
+				track.ID(), err)
+		})
+
+		_, err := peerConnection.AddTransceiverFromTrack(track,
+			webrtc.RTPTransceiverInit{
+				Direction: webrtc.RTPTransceiverDirectionSendonly,
+			},
+		)
+		internal.Must(err)
+	}
+
 	offer, err2 := peerConnection.CreateOffer(nil)
 	internal.Must(err2)
 	offerGatheringComplete := webrtc.GatheringCompletePromise(peerConnection)
@@ -111,32 +137,6 @@ func main() {
 		}
 	})
 
-	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
-		Video: func(c *mediadevices.MediaTrackConstraints) {
-			c.FrameFormat = prop.FrameFormat(frame.FormatI420)
-			c.Width = prop.Int(640)
-			c.Height = prop.Int(480)
-		},
-		Audio: func(c *mediadevices.MediaTrackConstraints) {
-		},
-		Codec: codecSelector,
-	})
-	internal.Must(err)
-
-	for _, track := range mediaStream.GetTracks() {
-		track.OnEnded(func(err error) {
-			fmt.Printf("Track (ID: %s) ended with error: %v\n",
-				track.ID(), err)
-		})
-
-		_, err := peerConnection.AddTransceiverFromTrack(track,
-			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendonly,
-			},
-		)
-		internal.Must(err)
-	}
-
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 
@@ -158,6 +158,13 @@ func main() {
 				panic(closeErr)
 			}
 
+			os.Exit(0)
+		}
+	})
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+		if s == webrtc.PeerConnectionStateFailed {
+			fmt.Println("Peer Connection has gone to failed exiting")
 			os.Exit(0)
 		}
 	})

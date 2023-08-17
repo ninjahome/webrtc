@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
+	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	"github.com/pion/mediadevices/pkg/codec/vpx"
@@ -27,9 +29,6 @@ func main() {
 		},
 	}
 
-	offer := webrtc.SessionDescription{}
-	internal.Decode(internal.MustReadStdin(), &offer)
-
 	x264Params, err := x264.NewParams()
 	internal.Must(err)
 
@@ -43,10 +42,20 @@ func main() {
 		mediadevices.WithVideoEncoders(&vp8Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
-	mediaEngine := webrtc.MediaEngine{}
+	mediaEngine := &webrtc.MediaEngine{}
 
-	codecSelector.Populate(&mediaEngine)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(&mediaEngine))
+	codecSelector.Populate(mediaEngine)
+
+	i := &interceptor.Registry{}
+
+	intervalPliFactory, ipErr := intervalpli.NewReceiverInterceptor()
+	internal.Must(ipErr)
+	i.Add(intervalPliFactory)
+	var rgeErr = webrtc.RegisterDefaultInterceptors(mediaEngine, i)
+	internal.Must(rgeErr)
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
+
 	var peerConnection, peerErr = api.NewPeerConnection(config)
 	internal.Must(peerErr)
 	defer func() {
@@ -54,42 +63,6 @@ func main() {
 			fmt.Printf("cannot close peerConnection: %v\n", cErr)
 		}
 	}()
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("Connection State has changed %s \n", connectionState.String())
-	})
-	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
-		if s == webrtc.PeerConnectionStateFailed {
-			fmt.Println("Peer Connection has gone to failed exiting")
-			os.Exit(0)
-		}
-	})
-
-	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
-		Video: func(c *mediadevices.MediaTrackConstraints) {
-			c.FrameFormat = prop.FrameFormat(frame.FormatI420)
-			c.Width = prop.Int(640)
-			c.Height = prop.Int(480)
-		},
-		Audio: func(c *mediadevices.MediaTrackConstraints) {
-		},
-		Codec: codecSelector,
-	})
-	internal.Must(err)
-
-	for _, track := range mediaStream.GetTracks() {
-		track.OnEnded(func(err error) {
-			fmt.Printf("Track (ID: %s) ended with error: %v\n",
-				track.ID(), err)
-		})
-
-		_, err := peerConnection.AddTransceiverFromTrack(track,
-			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendrecv,
-			},
-		)
-		internal.Must(err)
-	}
 
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
 	internal.Must(err)
@@ -114,6 +87,67 @@ func main() {
 			internal.SaveToDisk(ivfFile, track)
 		}
 	})
+
+	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
+		Video: func(c *mediadevices.MediaTrackConstraints) {
+			c.FrameFormat = prop.FrameFormat(frame.FormatI420)
+			c.Width = prop.Int(640)
+			c.Height = prop.Int(480)
+		},
+		Audio: func(c *mediadevices.MediaTrackConstraints) {
+		},
+		Codec: codecSelector,
+	})
+	internal.Must(err)
+
+	for _, track := range mediaStream.GetTracks() {
+		track.OnEnded(func(err error) {
+			fmt.Printf("Track (ID: %s) ended with error: %v\n",
+				track.ID(), err)
+		})
+
+		_, err := peerConnection.AddTransceiverFromTrack(track,
+			webrtc.RTPTransceiverInit{
+				Direction: webrtc.RTPTransceiverDirectionSendonly,
+			},
+		)
+		internal.Must(err)
+	}
+
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateConnected {
+			fmt.Println("Ctrl+C the remote client to stop the demo")
+		} else if connectionState == webrtc.ICEConnectionStateFailed {
+			if closeErr := oggFile.Close(); closeErr != nil {
+				panic(closeErr)
+			}
+
+			if closeErr := ivfFile.Close(); closeErr != nil {
+				panic(closeErr)
+			}
+
+			fmt.Println("Done writing media files")
+
+			// Gracefully shutdown the peer connection
+			if closeErr := peerConnection.Close(); closeErr != nil {
+				panic(closeErr)
+			}
+
+			os.Exit(0)
+		}
+	})
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+		if s == webrtc.PeerConnectionStateFailed {
+			fmt.Println("Peer Connection has gone to failed exiting")
+			os.Exit(0)
+		}
+	})
+
+	offer := webrtc.SessionDescription{}
+	internal.Decode(internal.MustReadStdin(), &offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
 	if err != nil {
