@@ -6,6 +6,7 @@ import (
 	"github.com/ninjahome/webrtc/demo/internal"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
+	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/ivfwriter"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
@@ -27,21 +28,10 @@ func main() {
 
 	m := &webrtc.MediaEngine{}
 
-	//if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-	//	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
-	//	PayloadType:        96,
-	//}, webrtc.RTPCodecTypeVideo); err != nil {
-	//	panic(err)
-	//}
-	//if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-	//	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
-	//	PayloadType:        111,
-	//}, webrtc.RTPCodecTypeAudio); err != nil {
-	//	panic(err)
-	//}
-
-	var mrgErr = m.RegisterDefaultCodecs()
-	internal.Must(mrgErr)
+	var mediaRegVideoErr = m.RegisterCodec(codec.NewRTPVP8Codec(90000).RTPCodecParameters, webrtc.RTPCodecTypeVideo)
+	internal.Must(mediaRegVideoErr)
+	var mediaRegAudioErr = m.RegisterCodec(codec.NewRTPOpusCodec(48000).RTPCodecParameters, webrtc.RTPCodecTypeAudio)
+	internal.Must(mediaRegAudioErr)
 
 	i := &interceptor.Registry{}
 
@@ -89,7 +79,7 @@ func main() {
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("output.ivf")
+	var ivfFile, ivfErr = ivfwriter.New("output.ivf") //, ivfwriter.WithCodec(webrtc.MimeTypeAV1))
 	internal.Must(ivfErr)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -100,6 +90,8 @@ func main() {
 		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
 			internal.SaveToDisk(ivfFile, track)
 		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeVP8) {
+			internal.SaveToDisk(ivfFile, track)
+		} else if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeAV1) {
 			internal.SaveToDisk(ivfFile, track)
 		}
 	})
