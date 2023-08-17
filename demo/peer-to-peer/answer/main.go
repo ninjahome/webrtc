@@ -53,11 +53,6 @@ func main() {
 		}
 	}()
 
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-	internal.Must(err)
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-	internal.Must(err)
-
 	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 		Video: func(c *mediadevices.MediaTrackConstraints) {
 			c.FrameFormat = prop.FrameFormat(frame.FormatI420)
@@ -78,11 +73,17 @@ func main() {
 
 		_, err := peerConnection.AddTransceiverFromTrack(track,
 			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendonly,
+				Direction: webrtc.RTPTransceiverDirectionSendrecv,
 			},
 		)
 		internal.Must(err)
 	}
+
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	internal.Must(err)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+	internal.Must(err)
+
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
 	var ivfFile, ivfErr = ivfwriter.New("output_answer.ivf")
@@ -108,13 +109,13 @@ func main() {
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			fmt.Println("Ctrl+C the remote client to stop the demo")
 		} else if connectionState == webrtc.ICEConnectionStateFailed {
-			if closeErr := oggFile.Close(); closeErr != nil {
-				panic(closeErr)
-			}
-
-			if closeErr := ivfFile.Close(); closeErr != nil {
-				panic(closeErr)
-			}
+			//if closeErr := oggFile.Close(); closeErr != nil {
+			//	panic(closeErr)
+			//}
+			//
+			//if closeErr := ivfFile.Close(); closeErr != nil {
+			//	panic(closeErr)
+			//}
 
 			fmt.Println("Done writing media files")
 

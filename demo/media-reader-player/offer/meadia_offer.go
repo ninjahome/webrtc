@@ -81,7 +81,7 @@ func main() {
 
 		_, err := peerConnection.AddTransceiverFromTrack(track,
 			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendrecv,
+				Direction: webrtc.RTPTransceiverDirectionSendonly,
 			},
 		)
 		internal.Must(err)
