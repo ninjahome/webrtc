@@ -1,6 +1,7 @@
 package webrtcLib
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/pion/webrtc/v3"
 )
@@ -16,8 +17,9 @@ var (
 )
 
 func SendVideoToPeer(data []byte) error {
-	//var rawData = make([]byte, len(data))
-	//copy(rawData, data)
+	var rawData = make([]byte, len(data))
+	copy(rawData, data)
+	//fmt.Printf("\n%s\n", hex.EncodeToString(rawData))
 	return nil
 }
 
@@ -33,7 +35,8 @@ func StartVideo(offerStr string, cb CallBack) error {
 	_inst.CallBack = cb
 
 	var peerConnection, err = createP2pConnect(offerStr, func(bytes []byte) error {
-		//fmt.Println("======>>>got peer data:", len(bytes))
+		fmt.Println("======>>>got peer data:\n", hex.EncodeToString(bytes))
+		fmt.Println()
 		_inst.videoRawBuff <- bytes
 		return nil
 	})

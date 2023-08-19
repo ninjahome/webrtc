@@ -6,7 +6,6 @@ import (
 	"github.com/ninjahome/webrtc/demo/internal"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
-	"github.com/pion/mediadevices/pkg/codec/vpx"
 	"github.com/pion/mediadevices/pkg/codec/x264"
 	_ "github.com/pion/mediadevices/pkg/driver/camera"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
@@ -34,15 +33,16 @@ func main() {
 	m := &webrtc.MediaEngine{}
 	x264Params, errX264 := x264.NewParams()
 	internal.Must(errX264)
+	x264Params.BitRate = 1_000_1000
 
-	vp8Params, errVp8 := vpx.NewVP8Params()
-	internal.Must(errVp8)
+	//vp8Params, errVp8 := vpx.NewVP8Params()
+	//internal.Must(errVp8)
 
 	opusParams, errOpus := opus.NewParams()
 	internal.Must(errOpus)
 	codecSelector := mediadevices.NewCodecSelector(
 		mediadevices.WithVideoEncoders(&x264Params),
-		mediadevices.WithVideoEncoders(&vp8Params),
+		//mediadevices.WithVideoEncoders(&vp8Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
 	codecSelector.Populate(m)
