@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
 	"github.com/pion/mediadevices"
@@ -102,8 +103,15 @@ func main() {
 		<-iceConnectedCtx.Done()
 		for {
 			pkts, release, err := rtpReader.Read()
+
 			internal.Must(err)
+
 			for _, pkt := range pkts {
+				fmt.Println("======>>>packet type:", pkt.String())
+				var rawData = make([]byte, len(pkt.Payload))
+				copy(rawData, pkt.Payload)
+				fmt.Println("======>>>got peer data:\n", hex.EncodeToString(rawData))
+				fmt.Println()
 				if err := videoOutputTrack.WriteRTP(pkt); err != nil {
 					panic(err)
 				}

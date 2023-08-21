@@ -1,12 +1,17 @@
 package webrtcLib
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/mediadevices/pkg/codec"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media/h264writer"
+	"github.com/pion/webrtc/v3/pkg/media/samplebuilder"
+	"io"
 	"sync"
 )
 
@@ -20,6 +25,10 @@ type AppInst struct {
 
 	videoRawBuff chan []byte //deque.Deque[[]byte]
 	p2pConn      *webrtc.PeerConnection
+	builder      *samplebuilder.SampleBuilder
+	x264Writer   *h264writer.H264Writer
+	x264Reader   io.Reader
+	//x264Reader *h264reader.H264Reader
 }
 
 var _inst = &AppInst{}
@@ -28,16 +37,57 @@ type CallBack interface {
 	NewVideoData(h264data []byte)
 }
 
-func (ai *AppInst) readingFromPeer() {
-	defer fmt.Println("======>>> start to read data from peer")
-	for bytes := range ai.videoRawBuff {
-		ai.NewVideoData(bytes)
-	}
-	fmt.Println("======>>> reading go thread exit")
-	return
+func (ai *AppInst) build(packets *rtp.Packet) error {
+	//ai.builder.Push(packets)
+	//
+	//for sample := ai.builder.Pop(); sample != nil; sample = ai.builder.Pop() {
+	//	var rawData = make([]byte, len(sample.Data))
+	//	fmt.Println("======>>>packet type:", sample.Duration)
+	//	copy(rawData, sample.Data)
+	//	_inst.videoRawBuff <- rawData
+	//}
+	//
+	////fmt.Println("======>>>packet type:", packets.String())
+	//return nil
+	return ai.x264Writer.WriteRTP(packets)
 }
 
-type RemoveRtpPayload func([]byte) error
+func (ai *AppInst) readingFromPeer() {
+	defer fmt.Println("======>>> reading go thread exit")
+	fmt.Println("======>>> start to read data from peer")
+	var buffer = make([]byte, 1<<10)
+	for {
+		var n, e = ai.x264Reader.Read(buffer)
+		if e != nil {
+			fmt.Println("======>>>x264Reader read err:", e)
+			return
+		}
+		ai.NewVideoData(buffer[:n])
+		fmt.Println("======>>>reader data:", hex.EncodeToString(buffer[:n]))
+	}
+	//for {
+	//	var nal, err = ai.x264Reader.NextNAL()
+	//	if err != nil {
+	//		if err == io.EOF {
+	//			fmt.Println("======>>>x264Reader read one data:", err)
+	//			continue
+	//		}
+	//		fmt.Println("======>>>x264Reader read err:", err)
+	//		return
+	//	}
+	//	fmt.Println("======>>>reader data:", nal.UnitType.String())
+	//	ai.NewVideoData(nal.Data)
+	//}
+	//for {
+	//	select {
+	//	case data := <-ai.videoRawBuff:
+	//		fmt.Println("======>>>sample data:", hex.EncodeToString(data))
+	//		ai.NewVideoData(data)
+	//	}
+	//}
+}
+
+type RemoveRtpPayload func(*rtp.Packet) error
 
 func createP2pConnect(offerStr string, callback RemoveRtpPayload) (*webrtc.PeerConnection, error) {
 
@@ -120,18 +170,22 @@ func createP2pConnect(offerStr string, callback RemoveRtpPayload) (*webrtc.PeerC
 			return
 		}
 		for {
-			rtp, _, readErr := track.ReadRTP()
+			packets, _, readErr := track.ReadRTP()
 			if readErr != nil {
 				fmt.Println("========>>>read rtp err:", readErr)
 				return
 			}
-			var rawData = make([]byte, len(rtp.Payload))
-			copy(rawData, rtp.Payload)
-			fmt.Println("======>>>packet type:", rtp.String())
-			if err := callback(rawData); err != nil {
+			if err := callback(packets); err != nil {
 				fmt.Println("========>>>send rtp err:", readErr)
 				return
 			}
+			//fmt.Println("======>>>packet type:", rtp.String())
+			//var rawData = make([]byte, len(rtp.Payload))
+			//copy(rawData, rtp.Payload)
+			//if err := callback(rawData); err != nil {
+			//	fmt.Println("========>>>send rtp err:", readErr)
+			//	return
+			//}
 		}
 	})
 
