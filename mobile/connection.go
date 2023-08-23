@@ -9,6 +9,8 @@ import (
 	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
+	"time"
 )
 
 type ConnectCallBack interface {
@@ -50,7 +52,7 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 		return nil, pcErr
 	}
 
-	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticRTP(videoCodec.RTPCodecCapability, "video", "ninja-video")
+	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(videoCodec.RTPCodecCapability, "video", "ninja-video")
 	if otErr != nil {
 		return nil, otErr
 	}
@@ -113,20 +115,21 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 
 	go func() {
 		<-iceConnectedCtx.Done()
-		//for {
-		//	//var pkt, err = callback.LocalRtp()
-		//	//if err != nil {
-		//	//	fmt.Println("========>>>read local rtp err:", err)
-		//	//	callback.StatusChanged(true)
-		//	//	return
-		//	//}
-		//	//if err := videoOutputTrack.WriteRTP(pkt); err != nil {
-		//	//	fmt.Println("========>>>write to rtp err:", err)
-		//	//	callback.StatusChanged(true)
-		//	//	return
-		//	//}
-		//}
+		for {
+			var data, err = callback.RawCameraData()
+			if err != nil {
+				fmt.Println("========>>>read local rtp err:", err)
+				callback.StatusChanged(true)
+				return
+			}
+			if err := videoOutputTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
+				fmt.Println("========>>>write to rtp err:", err)
+				callback.StatusChanged(true)
+				return
+			}
+		}
 	}()
+
 	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		if s == webrtc.PeerConnectionStateConnected {

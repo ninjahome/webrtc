@@ -12,7 +12,7 @@ import (
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/webrtc/v3"
-	"github.com/pion/webrtc/v3/pkg/media/ivfwriter"
+	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
 	"io"
 	"net/http"
@@ -34,9 +34,6 @@ func main() {
 	x264Params, errX264 := x264.NewParams()
 	internal.Must(errX264)
 	x264Params.BitRate = 1_000_1000
-
-	//vp8Params, errVp8 := vpx.NewVP8Params()
-	//internal.Must(errVp8)
 
 	opusParams, errOpus := opus.NewParams()
 	internal.Must(errOpus)
@@ -109,7 +106,7 @@ func main() {
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("offer.h264")
+	var h264File, ivfErr = h264writer.New("offer.h264")
 	internal.Must(ivfErr)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -118,11 +115,7 @@ func main() {
 		if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
 			internal.SaveToDisk(oggFile, track)
 		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
-			internal.SaveToDisk(ivfFile, track)
-		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeVP8) {
-			internal.SaveToDisk(ivfFile, track)
-		} else if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeAV1) {
-			internal.SaveToDisk(ivfFile, track)
+			internal.SaveToDisk(h264File, track)
 		}
 	})
 
@@ -136,7 +129,7 @@ func main() {
 				panic(closeErr)
 			}
 
-			if closeErr := ivfFile.Close(); closeErr != nil {
+			if closeErr := h264File.Close(); closeErr != nil {
 				panic(closeErr)
 			}
 

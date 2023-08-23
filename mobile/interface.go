@@ -2,7 +2,6 @@ package webrtcLib
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
@@ -31,8 +30,7 @@ func SendVideoToPeer(data []byte) error {
 		if idx < 0 {
 			return nil
 		}
-		fmt.Println("======>>>rawData:", rawData[idx+sCodeLen], hex.EncodeToString(rawData))
-
+		//fmt.Println("======>>>rawData:", rawData[idx+sCodeLen], hex.EncodeToString(rawData))
 		if rawData[idx+sCodeLen]&H264TypMask == 7 || rawData[idx+sCodeLen]&H264TypMask == 8 {
 			foundKeyFrame = true
 			fmt.Println("======>>> found key frame")
@@ -60,7 +58,7 @@ func StartVideo(offerStr string, cb CallBack) error {
 	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
 	_inst.x264Writer = h264writer.NewWith(_inst)
-	var peerConnection, err = createP2pDataConn(offerStr, _inst) // createP2pConnect(offerStr, _inst)
+	var peerConnection, err = createP2pConnect(offerStr, _inst)
 
 	if err != nil {
 		return err
