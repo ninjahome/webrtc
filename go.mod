@@ -5,6 +5,7 @@ go 1.21.0
 require (
 	github.com/gammazero/deque v0.2.1
 	github.com/nareix/joy4 v0.0.0-20200507095837-05a4ffbb5369
+	github.com/pion/datachannel v1.5.5
 	github.com/pion/interceptor v0.1.17
 	github.com/pion/mediadevices v0.5.0
 	github.com/pion/rtp v1.7.13
@@ -16,7 +17,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gen2brain/malgo v0.11.10 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/pion/datachannel v1.5.5 // indirect
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/ice/v2 v2.3.8 // indirect
 	github.com/pion/logging v0.2.2 // indirect

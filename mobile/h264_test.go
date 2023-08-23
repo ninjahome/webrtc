@@ -18,6 +18,8 @@ func TestParser(t *testing.T) {
 
 	annexbFrame, _ := hex.DecodeString("000000012742001fab405a050c80")
 	fmt.Println(annexbFrame)
+	fmt.Println("----->", annexbFrame[4]&0x1F)
+
 	nalus, typ = h264parser.SplitNALUs(annexbFrame)
 	fmt.Println(typ, len(nalus))
 
@@ -95,9 +97,11 @@ func TestReader(t *testing.T) {
 
 }
 func TestIndex(t *testing.T) {
-	var str = `000000016742c028da0280f684000003000400000300ca3c60ca800000000168ce3c80`
+	var str = `000000012742001fab405a050c80`
 	var bts, _ = hex.DecodeString(str)
 	fmt.Println(bts)
+	var idx = bytes.Index(bts, startCode)
+	fmt.Println(bts[idx+sCodeLen] & H264TypMask)
 	for {
 		var idx = bytes.Index(bts, startCode)
 		if idx != -1 {

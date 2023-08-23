@@ -63,6 +63,7 @@ func MustReadStdin() string {
 
 	return in
 }
+
 func SaveToDisk(i media.Writer, track *webrtc.TrackRemote) {
 	defer func() {
 		if err := i.Close(); err != nil {
@@ -76,7 +77,7 @@ func SaveToDisk(i media.Writer, track *webrtc.TrackRemote) {
 		if err != nil {
 			panic(err)
 		}
-		//fmt.Println("------>>>writing rtpPacket:")
+		fmt.Println("------>>>writing rtpPacket:", rtpPacket.String())
 		if err := i.WriteRTP(rtpPacket); err != nil {
 			fmt.Println(err, "\n", rtpPacket.String())
 		}

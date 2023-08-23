@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
+	"github.com/pion/datachannel"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	"github.com/pion/mediadevices/pkg/codec/x264"
@@ -12,13 +15,58 @@ import (
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/webrtc/v3"
-	"github.com/pion/webrtc/v3/pkg/media/ivfwriter"
+	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
-	"strings"
 )
+
+func WriteLoop(peer datachannel.ReadWriteCloser, videoReader mediadevices.RTPReadCloser) {
+	var writer = h264writer.NewWith(peer)
+	for {
+		packs, release, err := videoReader.Read()
+		if err != nil {
+			panic(err)
+		}
+		for _, packet := range packs {
+			err = writer.WriteRTP(packet)
+			if err != nil {
+				peer.Close()
+				videoReader.Close()
+				return
+			}
+			release()
+		}
+	}
+}
+
+func ReadLoop(peer datachannel.ReadWriteCloser, writer io.WriteCloser) {
+	for {
+		var lenBuf = make([]byte, 4)
+		n, err := io.ReadFull(peer, lenBuf)
+		if err != nil {
+			panic(err)
+		}
+		var dataLen = binary.BigEndian.Uint32(lenBuf)
+		fmt.Println("======>>>data len", dataLen)
+		if dataLen > 1<<24 {
+			panic("too big data")
+		}
+		var buffer = make([]byte, dataLen)
+		n, err = peer.Read(buffer)
+		if err != nil {
+			fmt.Println("Datachannel closed; Exit the readloop:", err)
+			peer.Close()
+			writer.Close()
+			return
+		}
+		fmt.Println("======>>>got from peer", hex.EncodeToString(buffer[:n]))
+
+		writer.Write(buffer[:n])
+	}
+}
 
 func main() {
 	offerAddr := flag.String("offer-address", ":50000", "Address that the Offer HTTP server is hosted on.")
@@ -30,35 +78,32 @@ func main() {
 		},
 	}
 
-	m := &webrtc.MediaEngine{}
 	x264Params, errX264 := x264.NewParams()
 	internal.Must(errX264)
 	x264Params.BitRate = 1_000_1000
-
-	//vp8Params, errVp8 := vpx.NewVP8Params()
-	//internal.Must(errVp8)
 
 	opusParams, errOpus := opus.NewParams()
 	internal.Must(errOpus)
 	codecSelector := mediadevices.NewCodecSelector(
 		mediadevices.WithVideoEncoders(&x264Params),
-		//mediadevices.WithVideoEncoders(&vp8Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
-	codecSelector.Populate(m)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
+
+	s := webrtc.SettingEngine{}
+	s.DetachDataChannels()
+
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(s))
 
 	var peerConnection, err = api.NewPeerConnection(config)
 	internal.Must(err)
+	dc, err := peerConnection.CreateDataChannel("h264Data", nil)
+	internal.Must(err)
+
 	defer func() {
 		if cErr := peerConnection.Close(); cErr != nil {
 			fmt.Printf("cannot close peerConnection: %v\n", cErr)
 		}
 	}()
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-	internal.Must(err)
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-	internal.Must(err)
 
 	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 		Video: func(c *mediadevices.MediaTrackConstraints) {
@@ -72,19 +117,9 @@ func main() {
 	})
 	internal.Must(err)
 
-	for _, track := range mediaStream.GetTracks() {
-		track.OnEnded(func(err error) {
-			fmt.Printf("Track (ID: %s) ended with error: %v\n",
-				track.ID(), err)
-		})
-
-		_, err := peerConnection.AddTransceiverFromTrack(track,
-			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendrecv,
-			},
-		)
-		internal.Must(err)
-	}
+	videoTrack := mediaStream.GetVideoTracks()[0].(*mediadevices.VideoTrack)
+	defer videoTrack.Close()
+	reader, err := videoTrack.NewRTPReader(x264Params.RTPCodec().MimeType, rand.Uint32(), 1000)
 
 	offer, err2 := peerConnection.CreateOffer(nil)
 	internal.Must(err2)
@@ -109,21 +144,22 @@ func main() {
 
 	var oggFile, oggErr = oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(oggErr)
-	var ivfFile, ivfErr = ivfwriter.New("offer.h264")
+	var ivfFile, ivfErr = os.Create("offer.h264")
 	internal.Must(ivfErr)
+	dc.OnOpen(func() {
+		fmt.Printf("Data channel '%s'-'%d' open.\n", dc.Label(), dc.ID())
 
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		codec := track.Codec()
-		fmt.Println("------>>>codec:", codec)
-		if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
-			internal.SaveToDisk(oggFile, track)
-		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
-			internal.SaveToDisk(ivfFile, track)
-		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeVP8) {
-			internal.SaveToDisk(ivfFile, track)
-		} else if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeAV1) {
-			internal.SaveToDisk(ivfFile, track)
+		// Detach the data channel
+		raw, dErr := dc.Detach()
+		if dErr != nil {
+			panic(dErr)
 		}
+
+		// Handle reading from the data channel
+		go ReadLoop(raw, ivfFile)
+
+		// Handle writing to the data channel
+		go WriteLoop(raw, reader)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
