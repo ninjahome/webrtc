@@ -19,10 +19,16 @@ type ConnectCallBack interface {
 	RawCameraData() ([]byte, error)
 }
 
-func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerConnection, error) {
+type NinjaConn struct {
+	conn       *webrtc.PeerConnection
+	videoTrack *webrtc.TrackLocalStaticSample
+	audioTrack *webrtc.TrackLocalStaticSample
+	callback   ConnectCallBack
+}
 
+func createBasicConn() (*NinjaConn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
-
+	var conn = &NinjaConn{}
 	var videoCodec = codec.NewRTPH264Codec(90000)
 	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
 	if meErr != nil {
@@ -51,7 +57,6 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 	if pcErr != nil {
 		return nil, pcErr
 	}
-
 	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(videoCodec.RTPCodecCapability, "video", "ninja-video")
 	if otErr != nil {
 		return nil, otErr
@@ -68,6 +73,9 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 			}
 		}
 	}()
+
+	conn.conn = peerConnection
+	conn.videoTrack = videoOutputTrack
 
 	var audioOutTrack, aoErr = webrtc.NewTrackLocalStaticRTP(audioCode.RTPCodecCapability, "audio", "ninja-audio")
 	if aoErr != nil {
@@ -86,53 +94,76 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 		}
 	}()
 
+	return conn, nil
+}
+func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	fmt.Printf("Track has started, of type %d: %s %s\n", track.PayloadType(), track.Codec().MimeType, track.Kind())
+	if track.Kind() == webrtc.RTPCodecTypeAudio {
+		return
+	}
+	for {
+		packets, _, readErr := track.ReadRTP()
+		if readErr != nil {
+			fmt.Println("========>>>read rtp err:", readErr)
+			return
+		}
+		if err := nc.callback.GotRtp(packets); err != nil {
+			fmt.Println("========>>>send rtp err:", readErr)
+			return
+		}
+	}
+}
+func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
+	<-iceConnectedCtx.Done()
+	for {
+		var data, err = nc.callback.RawCameraData()
+		if err != nil {
+			fmt.Println("========>>>read local rtp err:", err)
+			nc.callback.StatusChanged(true)
+			return
+		}
+		if err := nc.videoTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
+			fmt.Println("========>>>write to rtp err:", err)
+			nc.callback.StatusChanged(true)
+			return
+		}
+	}
+}
+func (nc *NinjaConn) Close() {
+
+}
+
+func (nc *NinjaConn) IsConnected() bool {
+	if nc.conn == nil {
+		return false
+	}
+	return nc.conn.ConnectionState() != webrtc.PeerConnectionStateConnected
+}
+
+func createP2pConnect(offerStr string, callback ConnectCallBack) (*NinjaConn, error) {
+	var nc, err = createBasicConn()
+	if err != nil {
+		return nil, err
+	}
+	nc.callback = callback
+
 	offer := webrtc.SessionDescription{}
 	var errEC = utils.Decode(offerStr, &offer)
 	if errEC != nil {
 		return nil, errEC
 	}
-	pcErr = peerConnection.SetRemoteDescription(offer)
+	var pcErr = nc.conn.SetRemoteDescription(offer)
 	if pcErr != nil {
 		return nil, pcErr
 	}
 
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		fmt.Printf("Track has started, of type %d: %s %s\n", track.PayloadType(), track.Codec().MimeType, track.Kind())
-		if track.Kind() == webrtc.RTPCodecTypeAudio {
-			return
-		}
-		for {
-			packets, _, readErr := track.ReadRTP()
-			if readErr != nil {
-				fmt.Println("========>>>read rtp err:", readErr)
-				return
-			}
-			if err := callback.GotRtp(packets); err != nil {
-				fmt.Println("========>>>send rtp err:", readErr)
-				return
-			}
-		}
-	})
+	nc.conn.OnTrack(nc.OnTrack)
+
 	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
 
-	go func() {
-		<-iceConnectedCtx.Done()
-		for {
-			var data, err = callback.RawCameraData()
-			if err != nil {
-				fmt.Println("========>>>read local rtp err:", err)
-				callback.StatusChanged(true)
-				return
-			}
-			if err := videoOutputTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
-				fmt.Println("========>>>write to rtp err:", err)
-				callback.StatusChanged(true)
-				return
-			}
-		}
-	}()
+	go nc.readLocalVideo(iceConnectedCtx)
 
-	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		if s == webrtc.PeerConnectionStateConnected {
 			callback.StatusChanged(true)
@@ -144,20 +175,24 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 		}
 	})
 
-	var answer, err = peerConnection.CreateAnswer(nil)
-	if err != nil {
-		return nil, err
+	var answer, errA = nc.conn.CreateAnswer(nil)
+	if errA != nil {
+		return nil, errA
 	}
 
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+	gatherComplete := webrtc.GatheringCompletePromise(nc.conn)
 
-	if err = peerConnection.SetLocalDescription(answer); err != nil {
+	if err = nc.conn.SetLocalDescription(answer); err != nil {
 		return nil, err
 	}
 
 	<-gatherComplete
 
-	fmt.Println(utils.Encode(*peerConnection.LocalDescription()))
+	fmt.Println(utils.Encode(*nc.conn.LocalDescription()))
 
-	return peerConnection, nil
+	return nc, nil
+}
+
+func createOfferConnect(remoteAnswer chan string, back CallBack) (*NinjaConn, error) {
+	return createBasicConn()
 }

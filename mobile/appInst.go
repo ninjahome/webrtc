@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/samplebuilder"
 	"io"
@@ -20,10 +19,11 @@ type AppInst struct {
 	CallBack
 	//queue        deque.Deque[[]byte]
 	videoRawBuff     chan []byte //deque.Deque[[]byte]
-	p2pConn          *webrtc.PeerConnection
+	p2pConn          *NinjaConn
 	builder          *samplebuilder.SampleBuilder
 	x264Writer       *h264writer.H264Writer
 	localVideoPacket chan []byte
+	answerDes        chan string
 }
 
 func (ai *AppInst) GotRtp(packet *rtp.Packet) error {
@@ -111,9 +111,4 @@ var _inst = &AppInst{}
 type CallBack interface {
 	NewVideoData(typ int, h264data []byte)
 	P2pConnected()
-}
-
-func (ai *AppInst) readingFromPeer() {
-	defer fmt.Println("======>>> reading go thread exit")
-	fmt.Println("======>>> start to read data from peer")
 }

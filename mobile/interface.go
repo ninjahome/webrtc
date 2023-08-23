@@ -20,7 +20,7 @@ var (
 var foundKeyFrame = false
 
 func SendVideoToPeer(data []byte) error {
-	if _inst.p2pConn.ConnectionState() != webrtc.PeerConnectionStateConnected {
+	if _inst.p2pConn.IsConnected() {
 		return nil
 	}
 	var rawData = make([]byte, len(data))
@@ -46,8 +46,26 @@ func SendVideoToPeer(data []byte) error {
 	_inst.localVideoPacket <- rawData
 	return nil
 }
+func StartVideo(cb CallBack) error {
+	_inst.appLocker.Lock()
+	defer _inst.appLocker.Unlock()
 
-func StartVideo(offerStr string, cb CallBack) error {
+	_inst.videoRawBuff = make(chan []byte, MaxBufferSize)
+	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
+	_inst.CallBack = cb
+
+	_inst.x264Writer = h264writer.NewWith(_inst)
+	_inst.answerDes = make(chan string)
+	var peerConnection, err = createOfferConnect(_inst.answerDes, _inst)
+
+	if err != nil {
+		return err
+	}
+	_inst.p2pConn = peerConnection
+	return nil
+}
+
+func AnswerVideo(offerStr string, cb CallBack) error {
 	if len(offerStr) < 10 || cb == nil {
 		return fmt.Errorf("error parametor for start video")
 	}
@@ -68,8 +86,6 @@ func StartVideo(offerStr string, cb CallBack) error {
 	}
 	_inst.p2pConn = peerConnection
 
-	go _inst.readingFromPeer()
-
 	return nil
 }
 
@@ -77,7 +93,7 @@ func StopVideo() {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
 	close(_inst.videoRawBuff)
-	_ = _inst.p2pConn.Close()
+	_inst.p2pConn.Close()
 }
 
 func TestFileData(cb CallBack, data []byte) {

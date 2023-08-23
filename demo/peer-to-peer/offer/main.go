@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
@@ -149,7 +148,7 @@ func main() {
 			pkts, release, err := rtpReader.Read()
 			internal.Must(err)
 			for _, pkt := range pkts {
-				fmt.Println("======>>>", hex.EncodeToString(pkt.Payload))
+				//fmt.Println("======>>>", hex.EncodeToString(pkt.Payload))
 				if err := videoOutputTrack.WriteRTP(pkt); err != nil {
 					panic(err)
 				}
