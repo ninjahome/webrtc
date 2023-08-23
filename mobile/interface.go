@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
+	"time"
 )
 
 var (
@@ -57,7 +58,9 @@ func StartVideo(offerStr string, cb CallBack) error {
 	_inst.videoRawBuff = make(chan []byte, MaxBufferSize)
 	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
+
 	_inst.x264Writer = h264writer.NewWith(_inst)
+
 	var peerConnection, err = createP2pConnect(offerStr, _inst)
 
 	if err != nil {
@@ -75,4 +78,45 @@ func StopVideo() {
 	defer _inst.appLocker.Unlock()
 	close(_inst.videoRawBuff)
 	_ = _inst.p2pConn.Close()
+}
+
+func TestFileData(cb CallBack, data []byte) {
+
+	var startIdx = bytes.Index(data, startCode)
+	if startIdx != 0 {
+		fmt.Println("======>>> invalid h264 stream")
+		return
+	}
+	sleepTime := time.Millisecond * time.Duration(33)
+	data = data[sCodeLen:]
+	for {
+		var typ = int(data[0] & H264TypMask)
+		if typ == 7 || typ == 8 {
+			startIdx = bytes.Index(data, startCode)
+			if startIdx < 0 {
+				fmt.Println("======>>> find sps or pps err")
+				return
+			}
+			var spsOrPssData = data[0:startIdx]
+			cb.NewVideoData(typ, spsOrPssData)
+			data = data[startIdx+sCodeLen:]
+			continue
+
+		}
+		if typ > 0 {
+			startIdx = bytes.Index(data, startCode)
+			if startIdx < 0 {
+				fmt.Println("======>>> found last frame")
+				cb.NewVideoData(typ, data)
+				return
+			}
+			var vdata = data[0:startIdx]
+			cb.NewVideoData(typ, vdata)
+			time.Sleep(sleepTime)
+
+			data = data[startIdx+sCodeLen:]
+			continue
+		}
+
+	}
 }

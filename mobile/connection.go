@@ -87,8 +87,10 @@ func createP2pConnect(offerStr string, callback ConnectCallBack) (*webrtc.PeerCo
 	}()
 
 	offer := webrtc.SessionDescription{}
-	utils.Decode(offerStr, &offer)
-
+	var errEC = utils.Decode(offerStr, &offer)
+	if errEC != nil {
+		return nil, errEC
+	}
 	pcErr = peerConnection.SetRemoteDescription(offer)
 	if pcErr != nil {
 		return nil, pcErr

@@ -27,6 +27,8 @@ type AppInst struct {
 }
 
 func (ai *AppInst) GotRtp(packet *rtp.Packet) error {
+	//fmt.Println("======>>>", packet.String())
+	//fmt.Println("======>>>", hex.EncodeToString(packet.Payload))
 	return ai.x264Writer.WriteRTP(packet)
 }
 

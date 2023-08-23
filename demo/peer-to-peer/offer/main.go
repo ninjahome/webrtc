@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
@@ -15,6 +17,7 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -39,7 +42,6 @@ func main() {
 	internal.Must(errOpus)
 	codecSelector := mediadevices.NewCodecSelector(
 		mediadevices.WithVideoEncoders(&x264Params),
-		//mediadevices.WithVideoEncoders(&vp8Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
 	codecSelector.Populate(m)
@@ -52,8 +54,24 @@ func main() {
 			fmt.Printf("cannot close peerConnection: %v\n", cErr)
 		}
 	}()
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	//_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	//internal.Must(err)
+
+	videoOutputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion")
 	internal.Must(err)
+	videoRtpSender, videoTrackErr := peerConnection.AddTrack(videoOutputTrack)
+	if videoTrackErr != nil {
+		panic(videoTrackErr)
+	}
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := videoRtpSender.Read(rtcpBuf); rtcpErr != nil {
+				panic(rtcpErr)
+			}
+		}
+	}()
+
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
 	internal.Must(err)
 
@@ -69,19 +87,19 @@ func main() {
 	})
 	internal.Must(err)
 
-	for _, track := range mediaStream.GetTracks() {
-		track.OnEnded(func(err error) {
-			fmt.Printf("Track (ID: %s) ended with error: %v\n",
-				track.ID(), err)
-		})
-
-		_, err := peerConnection.AddTransceiverFromTrack(track,
-			webrtc.RTPTransceiverInit{
-				Direction: webrtc.RTPTransceiverDirectionSendrecv,
-			},
-		)
-		internal.Must(err)
-	}
+	//for _, track := range mediaStream.GetTracks() {
+	//	track.OnEnded(func(err error) {
+	//		fmt.Printf("Track (ID: %s) ended with error: %v\n",
+	//			track.ID(), err)
+	//	})
+	//
+	//	_, err := peerConnection.AddTransceiverFromTrack(track,
+	//		webrtc.RTPTransceiverInit{
+	//			Direction: webrtc.RTPTransceiverDirectionSendrecv,
+	//		},
+	//	)
+	//	internal.Must(err)
+	//}
 
 	offer, err2 := peerConnection.CreateOffer(nil)
 	internal.Must(err2)
@@ -118,6 +136,27 @@ func main() {
 			internal.SaveToDisk(h264File, track)
 		}
 	})
+	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
+	videoInputTrack := mediaStream.GetVideoTracks()[0].(*mediadevices.VideoTrack)
+	defer videoInputTrack.Close()
+
+	go func() {
+		rtpReader, err := videoInputTrack.NewRTPReader(webrtc.MimeTypeH264, rand.Uint32(), internal.MTU)
+		internal.Must(err)
+
+		<-iceConnectedCtx.Done()
+		for {
+			pkts, release, err := rtpReader.Read()
+			internal.Must(err)
+			for _, pkt := range pkts {
+				fmt.Println("======>>>", hex.EncodeToString(pkt.Payload))
+				if err := videoOutputTrack.WriteRTP(pkt); err != nil {
+					panic(err)
+				}
+			}
+			release()
+		}
+	}()
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
@@ -145,6 +184,9 @@ func main() {
 	})
 	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+		if s == webrtc.PeerConnectionStateConnected {
+			iceConnectedCtxCancel()
+		}
 		if s == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
 			os.Exit(0)
