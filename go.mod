@@ -3,6 +3,7 @@ module github.com/ninjahome/webrtc
 go 1.21.0
 
 require (
+	github.com/gammazero/deque v0.2.1
 	github.com/nareix/joy4 v0.0.0-20200507095837-05a4ffbb5369
 	github.com/pion/interceptor v0.1.17
 	github.com/pion/mediadevices v0.5.0

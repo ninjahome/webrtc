@@ -1,12 +1,14 @@
 package webrtcLib
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/nareix/joy4/codec/h264parser"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/webrtc/v3"
+	"strings"
 	"testing"
 )
 
@@ -64,4 +66,64 @@ func TestBigEndian(t *testing.T) {
 	fmt.Println(binary.LittleEndian.Uint32(buf))
 	fmt.Println(hex.EncodeToString(buf))
 	fmt.Println((buf))
+}
+func TestSpsTest(t *testing.T) {
+	fmt.Println(0x41 & 0x1F)
+}
+
+func TestReader(t *testing.T) {
+	var str = `000000016742c028da0280f684000003000400000300ca3c60ca800000000168ce3c80`
+	var bts, _ = hex.DecodeString(str)
+
+	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+		fmt.Println(typ, hex.EncodeToString(h264data))
+	})
+
+	str = `00000001658882017a0c6002ae1600b599200d00014416c02a627d57b4d7e4d05c78a51880b1184022d3808f074310f3be83e2e366a4183ed8f92a12174c205e1c600021850e10000850c6794f2de5bc0d904025d929183861403700580595500b0121cc`
+	bts, _ = hex.DecodeString(str)
+
+	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+		fmt.Println(typ, hex.EncodeToString(h264data))
+	})
+
+	str = `00000001410192688042bc562c74324b491f84a77e77b76ad784b37b74db6fde5afc277d37bfc94865e88a17822b2347237cb9de89eef08595a3499e9236d0efe4d8e395f8ba2619a5cef3ba8fc75898988eb9d85b73a506f60ec319f086a6b67aa57f84`
+	bts, _ = hex.DecodeString(str)
+
+	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+		fmt.Println(typ, hex.EncodeToString(h264data))
+	})
+
+}
+func TestIndex(t *testing.T) {
+	var str = `000000016742c028da0280f684000003000400000300ca3c60ca800000000168ce3c80`
+	var bts, _ = hex.DecodeString(str)
+	fmt.Println(bts)
+	for {
+		var idx = bytes.Index(bts, startCode)
+		if idx != -1 {
+			bts = bts[idx+sCodeLen:]
+			fmt.Println(bts)
+		} else {
+			fmt.Println(bts)
+			break
+		}
+	}
+}
+
+func TestLittleEndian(t *testing.T) {
+	var str = `000000016742c028da0280f684000003000400000300ca3c60ca800000000168ce3c80`
+	var bts, _ = hex.DecodeString(str)
+	fmt.Println(binary.BigEndian.Uint32(bts[:4]))
+	fmt.Println(binary.LittleEndian.Uint32(bts[:4]))
+	var spsorpps = strings.Split(str, "00000001")
+	fmt.Println(spsorpps)
+	var cache bytes.Buffer
+	cache.Write(bts)
+	for {
+		var data, er = cache.ReadBytes(1)
+		fmt.Println(data, cache.Bytes())
+		if er != nil {
+			break
+		}
+	}
 }

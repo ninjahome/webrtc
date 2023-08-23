@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
-	"io"
 )
 
 var (
@@ -34,14 +33,7 @@ func StartVideo(offerStr string, cb CallBack) error {
 
 	_inst.videoRawBuff = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
-	//_inst.builder = samplebuilder.New(5, &codecs.H264Packet{}, 1)
-	var reader, writer = io.Pipe()
-	_inst.x264Writer = h264writer.NewWith(writer)
-	//var r, e = h264reader.NewReader(reader)
-	//if e != nil {
-	//	return e
-	//}
-	_inst.x264Reader = reader
+	_inst.x264Writer = h264writer.NewWith(_inst)
 	var peerConnection, err = createP2pConnect(offerStr, _inst.build)
 
 	if err != nil {
