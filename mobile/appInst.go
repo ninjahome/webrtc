@@ -51,24 +51,23 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 	var typ = int(p[sCodeLen] & H264TypMask)
 	var origLen = len(p)
 	p = p[sCodeLen:]
-	if typ == 7 || typ == 8 {
+	if typ == 7 {
 		startIdx = bytes.Index(p, startCode)
 		if startIdx < 0 {
-			callback(typ, p)
-			return len(p), nil
+			return 0, fmt.Errorf("error sps frame")
 		}
 		callback(typ, p[:startIdx])
-		var nextStart = startIdx + sCodeLen
-		var nextTyp = int(p[nextStart] & H264TypMask)
-		p = p[nextStart:]
+
+		p = p[startIdx+sCodeLen:]
+		var nextTyp = int(p[0] & H264TypMask)
+		if nextTyp != 8 {
+			return 0, fmt.Errorf("error pps frame")
+		}
 		callback(nextTyp, p)
-		return origLen - sCodeLen, nil
+		return origLen, nil
 	}
 
 	if typ > 0 {
-		//var dataLen = origLen - sCodeLen
-		//fmt.Println("======>>> data len:", dataLen)
-		//binary.LittleEndian.PutUint32(p[:sCodeLen], uint32(dataLen))
 		callback(typ, p)
 		if typ != 1 && typ != 5 {
 			fmt.Println("==================>new type", typ)
