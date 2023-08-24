@@ -86,7 +86,7 @@ func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 			nc.callback.EndCall()
 			return
 		}
-		fmt.Println("======>>>camera data got:", len(data))
+		//fmt.Println("======>>>camera data got:", len(data))
 	}
 }
 
@@ -112,7 +112,7 @@ func (nc *NinjaConn) Close() {
 }
 
 func (nc *NinjaConn) IsConnected() bool {
-	fmt.Println("======>>>status:", nc.status)
+	//fmt.Println("======>>>status:", nc.status)
 	return nc.status == webrtc.PeerConnectionStateConnected
 }
 
