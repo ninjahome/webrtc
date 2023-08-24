@@ -50,8 +50,8 @@ func StartVideo(cb CallBack) error {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
 
-	_inst.videoRawBuff = make(chan []byte, MaxBufferSize)
 	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
+	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
 
 	_inst.x264Writer = h264writer.NewWith(_inst)
@@ -73,8 +73,8 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
 
-	_inst.videoRawBuff = make(chan []byte, MaxBufferSize)
 	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
+	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
 
 	_inst.x264Writer = h264writer.NewWith(_inst)
@@ -92,7 +92,8 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 func StopVideo() {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
-	close(_inst.videoRawBuff)
+	close(_inst.localVideoPacket)
+	close(_inst.localAudioPacket)
 	_inst.p2pConn.Close()
 }
 

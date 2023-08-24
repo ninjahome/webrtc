@@ -17,12 +17,13 @@ const (
 type AppInst struct {
 	appLocker sync.RWMutex
 	CallBack
-	//queue        deque.Deque[[]byte]
-	videoRawBuff     chan []byte //deque.Deque[[]byte]
-	p2pConn          *NinjaConn
-	builder          *samplebuilder.SampleBuilder
-	x264Writer       *h264writer.H264Writer
+
+	p2pConn    *NinjaConn
+	builder    *samplebuilder.SampleBuilder
+	x264Writer *h264writer.H264Writer
+
 	localVideoPacket chan []byte
+	localAudioPacket chan []byte
 	answerDes        chan string
 }
 
@@ -42,6 +43,17 @@ func (ai *AppInst) RawCameraData() ([]byte, error) {
 		return nil, io.EOF
 	}
 	return pkt, nil
+}
+func (ai *AppInst) RawMicroData() ([]byte, error) {
+	var pkt, ok = <-ai.localVideoPacket
+	if !ok {
+		return nil, io.EOF
+	}
+	return pkt, nil
+}
+
+func (ai *AppInst) AnswerCreated(answer string) {
+	ai.CallBack.LocalAnswerCreated(answer)
 }
 
 var (
@@ -111,4 +123,5 @@ var _inst = &AppInst{}
 type CallBack interface {
 	NewVideoData(typ int, h264data []byte)
 	P2pConnected()
+	LocalAnswerCreated(string)
 }
