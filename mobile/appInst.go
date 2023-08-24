@@ -3,34 +3,47 @@ package webrtcLib
 import (
 	"bytes"
 	"fmt"
-	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/samplebuilder"
 	"io"
 	"sync"
 )
 
 const (
+	H264TypMask   = 0x1f
 	MaxBufferSize = 1 << 10
 )
+
+var (
+	startCode = []byte{0x00, 0x00, 0x00, 0x01}
+	sCodeLen  = len(startCode)
+	_inst     = &AppInst{}
+)
+
+type CallBack interface {
+	NewVideoData(typ int, h264data []byte)
+	P2pConnected()
+	AnswerCreated(string)
+	OfferCreated(string)
+}
 
 type AppInst struct {
 	appLocker sync.RWMutex
 	CallBack
 
-	p2pConn    *NinjaConn
-	builder    *samplebuilder.SampleBuilder
-	x264Writer *h264writer.H264Writer
+	p2pConn *NinjaConn
+	builder *samplebuilder.SampleBuilder
 
 	localVideoPacket chan []byte
 	localAudioPacket chan []byte
-	answerDes        chan string
 }
 
-func (ai *AppInst) GotRtp(packet *rtp.Packet) error {
-	//fmt.Println("======>>>", packet.String())
-	//fmt.Println("======>>>", hex.EncodeToString(packet.Payload))
-	return ai.x264Writer.WriteRTP(packet)
+func initSdk(cb CallBack) {
+	_inst.appLocker.Lock()
+	defer _inst.appLocker.Unlock()
+
+	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
+	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
+	_inst.CallBack = cb
 }
 
 func (ai *AppInst) StatusChanged(b bool) {
@@ -51,19 +64,25 @@ func (ai *AppInst) RawMicroData() ([]byte, error) {
 	}
 	return pkt, nil
 }
+func (ai *AppInst) EndCall() {
 
-func (ai *AppInst) AnswerCreated(answer string) {
-	ai.CallBack.LocalAnswerCreated(answer)
 }
 
-var (
-	startCode = []byte{0x00, 0x00, 0x00, 0x01}
-	sCodeLen  = len(startCode)
-)
+func (ai *AppInst) AnswerForCallerCreated(a string) {
+	ai.CallBack.AnswerCreated(a)
+}
+func (ai *AppInst) OfferForCalleeCreated(o string) {
+	ai.CallBack.OfferCreated(o)
+}
 
-const (
-	H264TypMask = 0x1f
-)
+func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return
+	}
+	var rawData = make([]byte, len(p))
+	copy(rawData, p)
+	return h254Write(rawData, ai.NewVideoData)
+}
 
 func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err error) {
 	if len(p) < 5 {
@@ -104,24 +123,4 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 	}
 
 	return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
-}
-
-func (ai *AppInst) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return
-	}
-	//fmt.Println("======>>>sample data:", hex.EncodeToString(p))
-	var rawData = make([]byte, len(p))
-	copy(rawData, p)
-	//ai.videoRawBuff = append(ai.videoRawBuff, p...)
-	return h254Write(rawData, ai.NewVideoData)
-	//return len(p), nil
-}
-
-var _inst = &AppInst{}
-
-type CallBack interface {
-	NewVideoData(typ int, h264data []byte)
-	P2pConnected()
-	LocalAnswerCreated(string)
 }

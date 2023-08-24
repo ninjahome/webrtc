@@ -83,7 +83,7 @@ func WriteLoop(raw datachannel.ReadWriteCloser, callback ConnectCallBack) {
 	for {
 		var data, err = callback.RawCameraData()
 		if err != nil {
-			callback.StatusChanged(false)
+			callback.EndCall()
 			raw.Close()
 			return
 		}
@@ -93,7 +93,7 @@ func WriteLoop(raw datachannel.ReadWriteCloser, callback ConnectCallBack) {
 		var _, err1 = raw.Write(lenBuf)
 		var _, err2 = raw.Write(data)
 		if err1 != nil || err2 != nil {
-			callback.StatusChanged(false)
+			callback.EndCall()
 			raw.Close()
 			return
 		}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pion/webrtc/v3"
-	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"time"
 )
 
@@ -46,22 +45,18 @@ func SendVideoToPeer(data []byte) error {
 	_inst.localVideoPacket <- rawData
 	return nil
 }
+
 func StartVideo(cb CallBack) error {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
+	initSdk(cb)
 
-	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
-	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
-	_inst.CallBack = cb
-
-	_inst.x264Writer = h264writer.NewWith(_inst)
-	_inst.answerDes = make(chan string)
-	var peerConnection, err = createOfferConnect(_inst.answerDes, _inst)
-
+	var peerConnection, err = CreateConnectionAsCaller(_inst)
 	if err != nil {
 		return err
 	}
 	_inst.p2pConn = peerConnection
+
 	return nil
 }
 
@@ -70,17 +65,9 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 		return fmt.Errorf("error parametor for start video")
 	}
 
-	_inst.appLocker.Lock()
-	defer _inst.appLocker.Unlock()
+	initSdk(cb)
 
-	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
-	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
-	_inst.CallBack = cb
-
-	_inst.x264Writer = h264writer.NewWith(_inst)
-
-	var peerConnection, err = createP2pConnect(offerStr, _inst)
-
+	var peerConnection, err = CreateConnectAsCallee(offerStr, _inst)
 	if err != nil {
 		return err
 	}
@@ -95,6 +82,13 @@ func StopVideo() {
 	close(_inst.localVideoPacket)
 	close(_inst.localAudioPacket)
 	_inst.p2pConn.Close()
+}
+
+func SetAnswerForOffer(answer string) {
+	var err = _inst.p2pConn.setRemoteDescription(answer)
+	if err != nil {
+		_inst.EndCall()
+	}
 }
 
 func TestFileData(cb CallBack, data []byte) {
