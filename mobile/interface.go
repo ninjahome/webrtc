@@ -69,7 +69,7 @@ func EndCall() {
 var foundKeyFrame = false //TODO:: refactor this variable
 
 func SendVideoToPeer(data []byte) error {
-	if _inst.p2pConn.IsConnected() {
+	if _inst.p2pConn.IsConnected() == false {
 		return nil
 	}
 	var rawData = make([]byte, len(data))
@@ -95,8 +95,10 @@ func SendVideoToPeer(data []byte) error {
 	_inst.localVideoPacket <- rawData
 	return nil
 }
+
 func SetAnswerForOffer(answer string) {
 	var err = _inst.p2pConn.setRemoteDescription(answer)
+	fmt.Println("======>>>err:", err)
 	if err != nil {
 		_inst.EndCall()
 	}

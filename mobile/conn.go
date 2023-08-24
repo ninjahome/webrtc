@@ -21,6 +21,7 @@ type ConnectCallBack interface {
 }
 
 type NinjaConn struct {
+	status     webrtc.PeerConnectionState
 	conn       *webrtc.PeerConnection
 	videoTrack *webrtc.TrackLocalStaticSample
 	audioTrack *webrtc.TrackLocalStaticSample
@@ -36,7 +37,12 @@ type NinjaConn struct {
 ************************************************************************************************************/
 
 func (nc *NinjaConn) Write(p []byte) (n int, err error) {
-	return nc.callback.GotVideoData(p)
+	if len(p) == 0 {
+		return
+	}
+	var rawData = make([]byte, len(p))
+	copy(rawData, p)
+	return nc.callback.GotVideoData(rawData)
 }
 
 /************************************************************************************************************
@@ -67,6 +73,7 @@ func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRece
 
 func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 	<-iceConnectedCtx.Done()
+	fmt.Println("======>>> start to read video data:")
 	for {
 		var data, err = nc.callback.RawCameraData()
 		if err != nil {
@@ -79,6 +86,7 @@ func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 			nc.callback.EndCall()
 			return
 		}
+		fmt.Println("======>>>camera data got:", len(data))
 	}
 }
 
@@ -104,10 +112,8 @@ func (nc *NinjaConn) Close() {
 }
 
 func (nc *NinjaConn) IsConnected() bool {
-	if nc.conn == nil {
-		return false
-	}
-	return nc.conn.ConnectionState() != webrtc.PeerConnectionStateConnected
+	fmt.Println("======>>>status:", nc.status)
+	return nc.status == webrtc.PeerConnectionStateConnected
 }
 
 func (nc *NinjaConn) setRemoteDescription(des string) error {
@@ -146,15 +152,6 @@ func (nc *NinjaConn) createAnswerForCaller() (string, error) {
 }
 
 func (nc *NinjaConn) createOfferForCallee() (string, error) {
-	//
-	//_, err := nc.conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-	//if err != nil {
-	//	return "", err
-	//}
-	//_, err = nc.conn.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-	//if err != nil {
-	//	return "", err
-	//}
 
 	var offer, errOffer = nc.conn.CreateOffer(nil)
 	if errOffer != nil {
@@ -182,7 +179,9 @@ func (nc *NinjaConn) createOfferForCallee() (string, error) {
 
 func createBasicConn() (*NinjaConn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
-	var conn = &NinjaConn{}
+	var conn = &NinjaConn{
+		status: webrtc.PeerConnectionStateNew,
+	}
 
 	conn.x264Writer = h264writer.NewWith(conn)
 
@@ -264,6 +263,7 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 
 	nc.conn.OnTrack(nc.OnTrack)
 	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		nc.status = s
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		if s == webrtc.PeerConnectionStateConnected {
 			iceConnectedCtxCancel()
@@ -299,13 +299,10 @@ func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
 
 	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
 	go nc.readLocalVideo(iceConnectedCtx)
-	//nc.conn.OnTrack(nc.OnTrack)
-	nc.conn.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		codec := track.Codec()
-		fmt.Println("------>>>codec:", codec)
 
-	})
+	nc.conn.OnTrack(nc.OnTrack)
 	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		nc.status = s
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		if s == webrtc.PeerConnectionStateConnected {
 			iceConnectedCtxCancel()
@@ -314,9 +311,6 @@ func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
 			fmt.Println("Peer Connection has gone to failed exiting")
 			nc.callback.EndCall()
 		}
-	})
-	nc.conn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed %s \n", connectionState.String())
 	})
 
 	return nc, nil

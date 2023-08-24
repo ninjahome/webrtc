@@ -46,7 +46,7 @@ func initSdk(cb CallBack) {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
 
-	_inst.localVideoPacket = make(chan []byte, MaxBufferSize)
+	_inst.localVideoPacket = make(chan []byte, 10)
 	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
 	_inst.CallBack = cb
 }
@@ -66,14 +66,15 @@ func (ai *AppInst) RawCameraData() ([]byte, error) {
 	return pkt, nil
 }
 func (ai *AppInst) RawMicroData() ([]byte, error) {
-	var pkt, ok = <-ai.localVideoPacket
+	var pkt, ok = <-ai.localAudioPacket
 	if !ok {
 		return nil, io.EOF
 	}
 	return pkt, nil
 }
-func (ai *AppInst) EndCall() {
 
+func (ai *AppInst) EndCall() {
+	fmt.Println("======>>>the call will be end")
 }
 
 func (ai *AppInst) AnswerForCallerCreated(a string) {
@@ -84,12 +85,7 @@ func (ai *AppInst) OfferForCalleeCreated(o string) {
 }
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return
-	}
-	var rawData = make([]byte, len(p))
-	copy(rawData, p)
-	return h254Write(rawData, ai.NewVideoData)
+	return h254Write(p, ai.NewVideoData)
 }
 
 /************************************************************************************************************
