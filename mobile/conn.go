@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
-	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
@@ -125,26 +123,26 @@ func (nc *NinjaConn) setRemoteDescription(des string) error {
 	return nil
 }
 
-func (nc *NinjaConn) createAnswerForCaller() error {
+func (nc *NinjaConn) createAnswerForCaller() (string, error) {
 	var answer, errA = nc.conn.CreateAnswer(nil)
 	if errA != nil {
-		return errA
+
+		return "", errA
 	}
 
 	gatherComplete := webrtc.GatheringCompletePromise(nc.conn)
 
 	if err := nc.conn.SetLocalDescription(answer); err != nil {
-		return err
+		return "", err
 	}
 
 	<-gatherComplete
 	var answerStr, err = utils.Encode(*nc.conn.LocalDescription())
 	if err != nil {
-		return err
+		return "", err
 	}
 	fmt.Println(answerStr)
-	nc.callback.AnswerForCallerCreated(answerStr)
-	return nil
+	return answerStr, nil
 }
 
 func (nc *NinjaConn) createOfferForCallee() (string, error) {
@@ -200,23 +198,11 @@ func createBasicConn() (*NinjaConn, error) {
 		return nil, acErr
 	}
 
-	i := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, i); err != nil {
-		return nil, err
-	}
-	var intervalPliFactory, ipErr = intervalpli.NewReceiverInterceptor()
-	if ipErr != nil {
-		return nil, ipErr
-	}
-	i.Add(intervalPliFactory)
-
-	var api = webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
-
+	var api = webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 	var peerConnection, pcErr = api.NewPeerConnection(config)
 	if pcErr != nil {
 		return nil, pcErr
 	}
-	conn.conn = peerConnection
 
 	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(videoCodec.RTPCodecCapability, "video", "ninja-video")
 	if otErr != nil {
@@ -235,8 +221,6 @@ func createBasicConn() (*NinjaConn, error) {
 			}
 		}
 	}()
-
-	conn.videoTrack = videoOutputTrack
 
 	//var audioOutTrack, aoErr = webrtc.NewTrackLocalStaticSample(audioCode.RTPCodecCapability, "audio", "ninja-audio")
 	//if aoErr != nil {
@@ -257,8 +241,12 @@ func createBasicConn() (*NinjaConn, error) {
 	//}()
 	//conn.audioTrack = audioOutTrack
 
+	conn.videoTrack = videoOutputTrack
+	conn.conn = peerConnection
+
 	return conn, nil
 }
+
 func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaConn, error) {
 	var nc, err = createBasicConn()
 	if err != nil {
@@ -286,9 +274,11 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 		}
 	})
 
-	if err := nc.createAnswerForCaller(); err != nil {
-		return nil, err
+	var answer, errA = nc.createAnswerForCaller()
+	if errA != nil {
+		return nil, errA
 	}
+	nc.callback.AnswerForCallerCreated(answer)
 
 	return nc, nil
 }
@@ -309,7 +299,12 @@ func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
 
 	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
 	go nc.readLocalVideo(iceConnectedCtx)
-	nc.conn.OnTrack(nc.OnTrack)
+	//nc.conn.OnTrack(nc.OnTrack)
+	nc.conn.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		codec := track.Codec()
+		fmt.Println("------>>>codec:", codec)
+
+	})
 	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		if s == webrtc.PeerConnectionStateConnected {
