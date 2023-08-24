@@ -30,85 +30,24 @@ type NinjaConn struct {
 	x264Writer *h264writer.H264Writer
 }
 
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
+
 func (nc *NinjaConn) Write(p []byte) (n int, err error) {
 	return nc.callback.GotVideoData(p)
 }
 
-func createBasicConn() (*NinjaConn, error) {
-	var mediaEngine = &webrtc.MediaEngine{}
-	var conn = &NinjaConn{}
-	conn.x264Writer = h264writer.NewWith(conn)
-	var videoCodec = codec.NewRTPH264Codec(90000)
-	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
-	if meErr != nil {
-		return nil, meErr
-	}
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
 
-	var audioCode = codec.NewRTPOpusCodec(48000)
-	var acErr = mediaEngine.RegisterCodec(audioCode.RTPCodecParameters, webrtc.RTPCodecTypeAudio)
-	if acErr != nil {
-		return nil, acErr
-	}
-
-	i := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, i); err != nil {
-		return nil, err
-	}
-	var intervalPliFactory, ipErr = intervalpli.NewReceiverInterceptor()
-	if ipErr != nil {
-		return nil, ipErr
-	}
-	i.Add(intervalPliFactory)
-
-	var api = webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
-
-	var peerConnection, pcErr = api.NewPeerConnection(config)
-	if pcErr != nil {
-		return nil, pcErr
-	}
-	conn.conn = peerConnection
-
-	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(videoCodec.RTPCodecCapability, "video", "ninja-video")
-	if otErr != nil {
-		return nil, otErr
-	}
-	var rtpSender, rsErr = peerConnection.AddTrack(videoOutputTrack)
-	if rsErr != nil {
-		return nil, rsErr
-	}
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				fmt.Println("======>>>video rtcp exit:", rtcpErr)
-				return
-			}
-		}
-	}()
-
-	conn.videoTrack = videoOutputTrack
-
-	var audioOutTrack, aoErr = webrtc.NewTrackLocalStaticSample(audioCode.RTPCodecCapability, "audio", "ninja-audio")
-	if aoErr != nil {
-		return nil, aoErr
-	}
-	//var audioRtpSender, arsErr = peerConnection.AddTrack(audioOutTrack)
-	//if arsErr != nil {
-	//	return nil, arsErr
-	//}
-	//go func() {
-	//	rtcpBuf := make([]byte, 1500)
-	//	for {
-	//		if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
-	//			fmt.Println("======>>>audio rtcp exit:", rtcpErr)
-	//			return
-	//		}
-	//	}
-	//}()
-	conn.audioTrack = audioOutTrack
-
-	return conn, nil
-}
 func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	fmt.Printf("Track has started, of type %d: %s %s\n", track.PayloadType(), track.Codec().MimeType, track.Kind())
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
@@ -142,17 +81,6 @@ func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 			nc.callback.EndCall()
 			return
 		}
-	}
-}
-
-func (nc *NinjaConn) OnConnectionStatusChanged(s webrtc.PeerConnectionState, cancel context.CancelFunc) {
-	fmt.Printf("Peer Connection State has changed: %s\n", s.String())
-	if s == webrtc.PeerConnectionStateConnected {
-		cancel()
-	}
-	if s == webrtc.PeerConnectionStateFailed {
-		fmt.Println("Peer Connection has gone to failed exiting")
-		nc.callback.EndCall()
 	}
 }
 
@@ -220,12 +148,22 @@ func (nc *NinjaConn) createAnswerForCaller() error {
 }
 
 func (nc *NinjaConn) createOfferForCallee() (string, error) {
-	var offer, err = nc.conn.CreateOffer(nil)
-	if err != nil {
-		return "", err
+	//
+	//_, err := nc.conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	//if err != nil {
+	//	return "", err
+	//}
+	//_, err = nc.conn.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+	//if err != nil {
+	//	return "", err
+	//}
+
+	var offer, errOffer = nc.conn.CreateOffer(nil)
+	if errOffer != nil {
+		return "", errOffer
 	}
 	var gatheringWait = webrtc.GatheringCompletePromise(nc.conn)
-	err = nc.conn.SetLocalDescription(offer)
+	var err = nc.conn.SetLocalDescription(offer)
 	if err != nil {
 		return "", err
 	}
@@ -234,10 +172,93 @@ func (nc *NinjaConn) createOfferForCallee() (string, error) {
 	if errEN != nil {
 		return "", errEN
 	}
-	nc.callback.OfferForCalleeCreated(offerStr)
 	return offerStr, nil
 }
 
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
+
+func createBasicConn() (*NinjaConn, error) {
+	var mediaEngine = &webrtc.MediaEngine{}
+	var conn = &NinjaConn{}
+
+	conn.x264Writer = h264writer.NewWith(conn)
+
+	var videoCodec = codec.NewRTPH264Codec(90000)
+	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
+	if meErr != nil {
+		return nil, meErr
+	}
+
+	var audioCode = codec.NewRTPOpusCodec(48000)
+	var acErr = mediaEngine.RegisterCodec(audioCode.RTPCodecParameters, webrtc.RTPCodecTypeAudio)
+	if acErr != nil {
+		return nil, acErr
+	}
+
+	i := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, i); err != nil {
+		return nil, err
+	}
+	var intervalPliFactory, ipErr = intervalpli.NewReceiverInterceptor()
+	if ipErr != nil {
+		return nil, ipErr
+	}
+	i.Add(intervalPliFactory)
+
+	var api = webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
+
+	var peerConnection, pcErr = api.NewPeerConnection(config)
+	if pcErr != nil {
+		return nil, pcErr
+	}
+	conn.conn = peerConnection
+
+	var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(videoCodec.RTPCodecCapability, "video", "ninja-video")
+	if otErr != nil {
+		return nil, otErr
+	}
+	var rtpSender, rsErr = peerConnection.AddTrack(videoOutputTrack)
+	if rsErr != nil {
+		return nil, rsErr
+	}
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				fmt.Println("======>>>video rtcp exit:", rtcpErr)
+				return
+			}
+		}
+	}()
+
+	conn.videoTrack = videoOutputTrack
+
+	//var audioOutTrack, aoErr = webrtc.NewTrackLocalStaticSample(audioCode.RTPCodecCapability, "audio", "ninja-audio")
+	//if aoErr != nil {
+	//	return nil, aoErr
+	//}
+	//var audioRtpSender, arsErr = peerConnection.AddTrack(audioOutTrack)
+	//if arsErr != nil {
+	//	return nil, arsErr
+	//}
+	//go func() {
+	//	rtcpBuf := make([]byte, 1500)
+	//	for {
+	//		if _, _, rtcpErr := audioRtpSender.Read(rtcpBuf); rtcpErr != nil {
+	//			fmt.Println("======>>>audio rtcp exit:", rtcpErr)
+	//			return
+	//		}
+	//	}
+	//}()
+	//conn.audioTrack = audioOutTrack
+
+	return conn, nil
+}
 func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaConn, error) {
 	var nc, err = createBasicConn()
 	if err != nil {
@@ -255,7 +276,14 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 
 	nc.conn.OnTrack(nc.OnTrack)
 	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		nc.OnConnectionStatusChanged(s, iceConnectedCtxCancel)
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+		if s == webrtc.PeerConnectionStateConnected {
+			iceConnectedCtxCancel()
+		}
+		if s == webrtc.PeerConnectionStateFailed {
+			fmt.Println("Peer Connection has gone to failed exiting")
+			nc.callback.EndCall()
+		}
 	})
 
 	if err := nc.createAnswerForCaller(); err != nil {
@@ -277,13 +305,23 @@ func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
 	if errOffer != nil {
 		return nil, errOffer
 	}
-	fmt.Println(offer)
+	nc.callback.OfferForCalleeCreated(offer)
 
 	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
 	go nc.readLocalVideo(iceConnectedCtx)
 	nc.conn.OnTrack(nc.OnTrack)
 	nc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		nc.OnConnectionStatusChanged(s, iceConnectedCtxCancel)
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+		if s == webrtc.PeerConnectionStateConnected {
+			iceConnectedCtxCancel()
+		}
+		if s == webrtc.PeerConnectionStateFailed {
+			fmt.Println("Peer Connection has gone to failed exiting")
+			nc.callback.EndCall()
+		}
+	})
+	nc.conn.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("ICE Connection State has changed %s \n", connectionState.String())
 	})
 
 	return nc, nil

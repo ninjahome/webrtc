@@ -5,31 +5,28 @@ import (
 	"github.com/ninjahome/webrtc/demo/internal"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
+	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/webrtc/v3"
-	"github.com/pion/webrtc/v3/pkg/media/ivfwriter"
+	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
 	"os"
 	"strings"
 )
 
 func main() {
-	m := &webrtc.MediaEngine{}
+	mediaEngine := &webrtc.MediaEngine{}
 
-	//if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-	//	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
-	//	PayloadType:        96,
-	//}, webrtc.RTPCodecTypeVideo); err != nil {
-	//	panic(err)
-	//}
-	//if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-	//	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
-	//	PayloadType:        111,
-	//}, webrtc.RTPCodecTypeAudio); err != nil {
-	//	panic(err)
-	//}
+	var videoCodec = codec.NewRTPH264Codec(90000)
+	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
+	if meErr != nil {
+		internal.Must(meErr)
+	}
 
-	err := m.RegisterDefaultCodecs()
-	internal.Must(err)
+	var audioCode = codec.NewRTPOpusCodec(48000)
+	var acErr = mediaEngine.RegisterCodec(audioCode.RTPCodecParameters, webrtc.RTPCodecTypeAudio)
+	if acErr != nil {
+		internal.Must(meErr)
+	}
 
 	i := &interceptor.Registry{}
 
@@ -39,11 +36,11 @@ func main() {
 	}
 	i.Add(intervalPliFactory)
 
-	if err = webrtc.RegisterDefaultInterceptors(m, i); err != nil {
+	if err = webrtc.RegisterDefaultInterceptors(mediaEngine, i); err != nil {
 		panic(err)
 	}
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
 
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -63,7 +60,7 @@ func main() {
 
 	oggFile, err := oggwriter.New("output.ogg", 48000, 2)
 	internal.Must(err)
-	ivfFile, err := ivfwriter.New("output_read_from_web.ivf")
+	ivfFile, err := h264writer.New("offer.h264")
 	internal.Must(err)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -72,11 +69,9 @@ func main() {
 		if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
 			fmt.Println("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)")
 			internal.SaveToDisk(oggFile, track)
-		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeVP8) {
-			fmt.Println("Got VP8 track, saving to disk as output.ivf")
-			internal.SaveToDisk(ivfFile, track)
+
 		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
-			fmt.Println("Got VP8 track, saving to disk as output.ivf")
+			fmt.Println("Got H264 track, saving to disk as offer.h264")
 			internal.SaveToDisk(ivfFile, track)
 		}
 	})

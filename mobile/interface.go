@@ -16,7 +16,57 @@ var (
 		},
 	}
 )
-var foundKeyFrame = false
+
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
+
+func StartVideo(cb CallBack) error {
+	initSdk(cb)
+
+	var peerConnection, err = CreateConnectionAsCaller(_inst)
+	if err != nil {
+		return err
+	}
+	_inst.p2pConn = peerConnection
+
+	return nil
+}
+
+func AnswerVideo(offerStr string, cb CallBack) error {
+	if len(offerStr) < 10 || cb == nil {
+		return fmt.Errorf("error parametor for start video")
+	}
+
+	initSdk(cb)
+
+	var peerConnection, err = CreateConnectAsCallee(offerStr, _inst)
+	if err != nil {
+		return err
+	}
+	_inst.p2pConn = peerConnection
+
+	return nil
+}
+
+func EndCall() {
+	_inst.appLocker.Lock()
+	defer _inst.appLocker.Unlock()
+	close(_inst.localVideoPacket)
+	close(_inst.localAudioPacket)
+	_inst.p2pConn.Close()
+}
+
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
+var foundKeyFrame = false //TODO:: refactor this variable
 
 func SendVideoToPeer(data []byte) error {
 	if _inst.p2pConn.IsConnected() {
@@ -45,51 +95,19 @@ func SendVideoToPeer(data []byte) error {
 	_inst.localVideoPacket <- rawData
 	return nil
 }
-
-func StartVideo(cb CallBack) error {
-	_inst.appLocker.Lock()
-	defer _inst.appLocker.Unlock()
-	initSdk(cb)
-
-	var peerConnection, err = CreateConnectionAsCaller(_inst)
-	if err != nil {
-		return err
-	}
-	_inst.p2pConn = peerConnection
-
-	return nil
-}
-
-func AnswerVideo(offerStr string, cb CallBack) error {
-	if len(offerStr) < 10 || cb == nil {
-		return fmt.Errorf("error parametor for start video")
-	}
-
-	initSdk(cb)
-
-	var peerConnection, err = CreateConnectAsCallee(offerStr, _inst)
-	if err != nil {
-		return err
-	}
-	_inst.p2pConn = peerConnection
-
-	return nil
-}
-
-func StopVideo() {
-	_inst.appLocker.Lock()
-	defer _inst.appLocker.Unlock()
-	close(_inst.localVideoPacket)
-	close(_inst.localAudioPacket)
-	_inst.p2pConn.Close()
-}
-
 func SetAnswerForOffer(answer string) {
 	var err = _inst.p2pConn.setRemoteDescription(answer)
 	if err != nil {
 		_inst.EndCall()
 	}
 }
+
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
 
 func TestFileData(cb CallBack, data []byte) {
 

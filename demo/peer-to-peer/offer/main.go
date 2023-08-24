@@ -39,6 +39,7 @@ func main() {
 
 	opusParams, errOpus := opus.NewParams()
 	internal.Must(errOpus)
+
 	codecSelector := mediadevices.NewCodecSelector(
 		mediadevices.WithVideoEncoders(&x264Params),
 		mediadevices.WithAudioEncoders(&opusParams),

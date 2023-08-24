@@ -3,7 +3,6 @@ package webrtcLib
 import (
 	"bytes"
 	"fmt"
-	"github.com/pion/webrtc/v3/pkg/media/samplebuilder"
 	"io"
 	"sync"
 )
@@ -19,19 +18,25 @@ var (
 	_inst     = &AppInst{}
 )
 
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
+
 type CallBack interface {
 	NewVideoData(typ int, h264data []byte)
-	P2pConnected()
 	AnswerCreated(string)
 	OfferCreated(string)
 }
 
 type AppInst struct {
 	appLocker sync.RWMutex
+
 	CallBack
 
 	p2pConn *NinjaConn
-	builder *samplebuilder.SampleBuilder
 
 	localVideoPacket chan []byte
 	localAudioPacket chan []byte
@@ -46,9 +51,12 @@ func initSdk(cb CallBack) {
 	_inst.CallBack = cb
 }
 
-func (ai *AppInst) StatusChanged(b bool) {
-	ai.P2pConnected()
-}
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
 
 func (ai *AppInst) RawCameraData() ([]byte, error) {
 	var pkt, ok = <-ai.localVideoPacket
@@ -83,6 +91,13 @@ func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
 	copy(rawData, p)
 	return h254Write(rawData, ai.NewVideoData)
 }
+
+/************************************************************************************************************
+*
+*
+*
+*
+************************************************************************************************************/
 
 func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err error) {
 	if len(p) < 5 {
