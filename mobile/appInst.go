@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	H264TypMask   = 0x1f
-	MaxBufferSize = 1 << 10
+	H264TypMask       = 0x1f
+	MaxConnBufferSize = 1 << 22
+	MaxInBufferSize   = 1 << 16
 )
 
 var (
@@ -46,8 +47,8 @@ func initSdk(cb CallBack) {
 	_inst.appLocker.Lock()
 	defer _inst.appLocker.Unlock()
 
-	_inst.localVideoPacket = make(chan []byte, 10)
-	_inst.localAudioPacket = make(chan []byte, MaxBufferSize)
+	_inst.localVideoPacket = make(chan []byte, MaxInBufferSize)
+	_inst.localAudioPacket = make(chan []byte, MaxInBufferSize)
 	_inst.CallBack = cb
 }
 
@@ -127,9 +128,9 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 
 	if typ > 0 {
 		callback(typ, p)
-		if typ != 1 && typ != 5 {
-			fmt.Println("==================>new type", typ)
-		}
+		//if typ != 1 && typ != 5 {
+		//	fmt.Println("==================>new type", typ)
+		//}
 		return origLen, nil
 	}
 
