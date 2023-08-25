@@ -96,7 +96,7 @@ func main() {
 
 	var peerConnection, err = api.NewPeerConnection(config)
 	internal.Must(err)
-	dc, err := peerConnection.CreateDataChannel("h264Data", nil)
+	dc, err := peerConnection.CreateDataChannel("ninja-data-video", nil)
 	internal.Must(err)
 
 	defer func() {
@@ -119,7 +119,7 @@ func main() {
 
 	videoTrack := mediaStream.GetVideoTracks()[0].(*mediadevices.VideoTrack)
 	defer videoTrack.Close()
-	reader, err := videoTrack.NewRTPReader(x264Params.RTPCodec().MimeType, rand.Uint32(), 1000)
+	_, err = videoTrack.NewRTPReader(x264Params.RTPCodec().MimeType, rand.Uint32(), 1000)
 
 	offer, err2 := peerConnection.CreateOffer(nil)
 	internal.Must(err2)
@@ -159,7 +159,7 @@ func main() {
 		go ReadLoop(raw, ivfFile)
 
 		// Handle writing to the data channel
-		go WriteLoop(raw, reader)
+		//go WriteLoop(raw, reader)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {

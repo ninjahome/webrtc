@@ -18,7 +18,7 @@ type ConnectCallBack interface {
 	RawMicroData() ([]byte, error)
 	AnswerForCallerCreated(string)
 	OfferForCalleeCreated(string)
-	EndCall()
+	EndCall(error)
 }
 
 type NinjaConn struct {
@@ -71,13 +71,13 @@ func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRece
 
 func (nc *NinjaConn) consumeInVideo(iceConnectedCtx context.Context) {
 	<-iceConnectedCtx.Done()
-	defer nc.callback.EndCall()
 	fmt.Println("======>>>start to reading remote video data")
 	for {
 		select {
 		case pkt := <-nc.inVideoBuf:
 			if err := nc.x264Writer.WriteRTP(pkt); err != nil {
 				fmt.Println("========>>>send rtp err:", err)
+				nc.callback.EndCall(err)
 				return
 			}
 		}
@@ -91,12 +91,12 @@ func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 		var data, err = nc.callback.RawCameraData()
 		if err != nil {
 			fmt.Println("========>>>read local rtp err:", err)
-			nc.callback.EndCall()
+			nc.callback.EndCall(err)
 			return
 		}
 		if err := nc.videoTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
 			fmt.Println("========>>>write to rtp err:", err)
-			nc.callback.EndCall()
+			nc.callback.EndCall(err)
 			return
 		}
 		//fmt.Println("======>>>camera data got:", len(data))
@@ -109,12 +109,12 @@ func (nc *NinjaConn) readLocalAudio(iceConnectedCtx context.Context) {
 		var data, err = nc.callback.RawMicroData()
 		if err != nil {
 			fmt.Println("========>>>read local rtp err:", err)
-			nc.callback.EndCall()
+			nc.callback.EndCall(err)
 			return
 		}
 		if err := nc.audioTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
 			fmt.Println("========>>>write to rtp err:", err)
-			nc.callback.EndCall()
+			nc.callback.EndCall(err)
 			return
 		}
 	}
@@ -288,7 +288,7 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 		}
 		if s == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
-			nc.callback.EndCall()
+			nc.callback.EndCall(fmt.Errorf("connection failed"))
 		}
 	})
 
@@ -330,7 +330,7 @@ func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
 		}
 		if s == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
-			nc.callback.EndCall()
+			nc.callback.EndCall(fmt.Errorf("connection failed"))
 		}
 	})
 

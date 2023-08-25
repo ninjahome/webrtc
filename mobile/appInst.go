@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	H264TypMask       = 0x1f
-	MaxConnBufferSize = 1 << 22
-	MaxInBufferSize   = 1 << 16
+	H264TypMask           = 0x1f
+	MaxConnBufferSize     = 1 << 22
+	MaxDataConnBufferSize = 1 << 16
+	MaxInBufferSize       = 1 << 16
 )
 
 var (
@@ -38,6 +39,7 @@ type AppInst struct {
 	CallBack
 
 	p2pConn *NinjaConn
+	//p2pConn *NinjaDataConn
 
 	localVideoPacket chan []byte
 	localAudioPacket chan []byte
@@ -74,8 +76,8 @@ func (ai *AppInst) RawMicroData() ([]byte, error) {
 	return pkt, nil
 }
 
-func (ai *AppInst) EndCall() {
-	fmt.Println("======>>>the call will be end")
+func (ai *AppInst) EndCall(err error) {
+	fmt.Println("======>>>the call will be end:", err)
 }
 
 func (ai *AppInst) AnswerForCallerCreated(a string) {
@@ -87,6 +89,7 @@ func (ai *AppInst) OfferForCalleeCreated(o string) {
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
 	return h254Write(p, ai.NewVideoData)
+	//return h254Write2(p, ai.NewVideoData)
 }
 
 /************************************************************************************************************
@@ -128,11 +131,50 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 
 	if typ > 0 {
 		callback(typ, p)
-		//if typ != 1 && typ != 5 {
-		//	fmt.Println("==================>new type", typ)
-		//}
 		return origLen, nil
 	}
 
 	return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
+}
+func h254Write2(p []byte, callback func(typ int, h264data []byte)) (n int, err error) {
+	if len(p) < 5 {
+		fmt.Println("======>>>invalid rtp packets:", p)
+		return 0, nil
+	}
+
+	var startIdx = bytes.Index(p, startCode)
+	if startIdx != 0 {
+		return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
+	}
+
+	var typ = int(p[sCodeLen] & H264TypMask)
+	var origLen = len(p)
+	p = p[sCodeLen:]
+	callback(typ, p)
+	return origLen, nil
+
+	//if typ == 7 {
+	//	startIdx = bytes.Index(p, startCode)
+	//	if startIdx < 0 {
+	//		return 0, fmt.Errorf("error sps frame")
+	//	}
+	//	callback(typ, p[:startIdx])
+	//
+	//	p = p[startIdx+sCodeLen:]
+	//	var nextTyp = int(p[0] & H264TypMask)
+	//	if nextTyp != 8 {
+	//		return 0, fmt.Errorf("error pps frame")
+	//	}
+	//	callback(nextTyp, p)
+	//	return origLen, nil
+	//}
+	//
+	//if typ > 0 {
+	//	callback(typ, p)
+	//	//if typ != 1 && typ != 5 {
+	//	//	fmt.Println("==================>new type", typ)
+	//	//}
+	//	return origLen, nil
+	//}
+	//return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
 }
