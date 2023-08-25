@@ -18,7 +18,7 @@ var (
 	timeOut    = ICETimeOut
 	stunUrl, _ = stun.ParseURI("stun:stun.l.google.com:19302")
 	iceConfig  = &ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
 		Urls:          []*stun.URI{stunUrl},
 		FailedTimeout: &timeOut,
 	}
@@ -88,10 +88,20 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("======>>>offer got:", param)
-
+	//fmt.Println("======>>>offer got:", param)
 	if len(param.Candidates) == 0 {
 		return fmt.Errorf("no valid candidate")
+	}
+
+	for _, candidate := range param.Candidates {
+		var can, err = ice.UnmarshalCandidate(candidate)
+		if err != nil {
+			return err
+		}
+		err = nic.agent.AddRemoteCandidate(can)
+		if err != nil {
+			return err
+		}
 	}
 	var conn *ice.Conn
 	if nic.isOffer {
@@ -108,7 +118,7 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 
 func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 	go nic.writeVideoToRemote(conn)
-	go nic.readVideoFromRemote(conn)
+	//go nic.readVideoFromRemote(conn)
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
@@ -127,14 +137,19 @@ func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var buf = make([]byte, 1500)
+	var buf = make([]byte, MaxConnBufferSize)
 	for {
 		var n, err = conn.Read(buf)
 		if err != nil {
 			nic.callback.EndCall(err)
 			return
 		}
-		fmt.Println("======>>>", string(buf[:n]))
+		fmt.Println("======>>>", n)
+		_, err = nic.callback.GotVideoData(buf[:n])
+		if err != nil {
+			nic.callback.EndCall(err)
+			return
+		}
 	}
 }
 

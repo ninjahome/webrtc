@@ -116,7 +116,8 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 	if typ == 7 {
 		startIdx = bytes.Index(p, startCode)
 		if startIdx < 0 {
-			return 0, fmt.Errorf("error sps frame")
+			callback(typ, p)
+			return origLen, nil
 		}
 		callback(typ, p[:startIdx])
 
