@@ -91,7 +91,7 @@ func SendVideoToPeer(data []byte) error {
 		fmt.Println("======>>>no key frame yet")
 		return nil
 	}
-
+	//fmt.Println("======>>>send from app:", len(rawData))
 	_inst.localVideoPacket <- rawData
 	return nil
 }

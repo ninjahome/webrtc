@@ -2,6 +2,7 @@ package webrtcLib
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/ice/v2"
@@ -103,6 +104,7 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 			return err
 		}
 	}
+
 	var conn *ice.Conn
 	if nic.isOffer {
 		conn, err = nic.agent.Dial(context.TODO(), param.Frag, param.Pwd)
@@ -118,20 +120,41 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 
 func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 	go nic.writeVideoToRemote(conn)
-	//go nic.readVideoFromRemote(conn)
+	go nic.readVideoFromRemote(conn)
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
+	var lenBuf = make([]byte, 4)
 	for {
+		var writeN = 0
+		var errW error
 		var data, err = nic.callback.RawCameraData()
+		var dateLen = len(data)
+
+		fmt.Println("======>>>got from camera:", dateLen)
 		if err != nil {
 			nic.callback.EndCall(err)
 			return
 		}
-		_, err = conn.Write(data)
-		if err != nil {
-			nic.callback.EndCall(err)
+
+		binary.BigEndian.PutUint32(lenBuf, uint32(dateLen))
+		writeN, errW = conn.Write(lenBuf)
+		if writeN != 4 || errW != nil {
+			nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
 			return
+		}
+
+		for startIdx := 0; startIdx < dateLen; startIdx = startIdx + IceUdpMtu {
+			if startIdx+IceUdpMtu > dateLen {
+				writeN, errW = conn.Write(data[startIdx:dateLen])
+			} else {
+				writeN, errW = conn.Write(data[startIdx : startIdx+IceUdpMtu])
+			}
+			if errW != nil || writeN == 0 {
+				nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
+				return
+			}
+			//fmt.Println("======>>>write to peer :", writeN, startIdx, IceUdpMtu)
 		}
 	}
 }

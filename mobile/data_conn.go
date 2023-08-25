@@ -55,27 +55,27 @@ func (ndc *NinjaDataConn) IsConnected() bool {
 	return ndc.status == webrtc.PeerConnectionStateConnected
 }
 func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser) {
+	var lenBuf = make([]byte, 4)
 	for {
-		var lenBuf = make([]byte, 4)
 		n, err := io.ReadFull(raw, lenBuf)
 		if err != nil {
 			ndc.callback.EndCall(err)
 		}
-		var dataLen = binary.BigEndian.Uint32(lenBuf)
+		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
 		//fmt.Println("======>>>data len", dataLen)
 		if dataLen > MaxDataSize {
 			ndc.callback.EndCall(fmt.Errorf("too big data"))
 		}
 
 		var buffer = make([]byte, dataLen)
-		n, err = raw.Read(buffer)
-		if err != nil {
+		n, err = io.ReadFull(raw, buffer)
+		if err != nil || n != dataLen {
 			fmt.Println("======>>>Datachannel closed; Exit the readingVideoData:", err)
 			_ = raw.Close()
 			ndc.callback.EndCall(err)
 			return
 		}
-		ndc.inCache <- buffer[:n]
+		ndc.inCache <- buffer
 	}
 }
 
@@ -96,22 +96,34 @@ func (ndc *NinjaDataConn) writeDataToApp() {
 }
 
 func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser) {
+	var lenBuf = make([]byte, 4)
 	for {
 		var data, err = ndc.callback.RawCameraData()
 		if err != nil {
 			ndc.callback.EndCall(err)
 			return
 		}
-
+		var dataLen = len(data)
 		//fmt.Println("======>>>write video data to peer", len(data)) // hex.EncodeToString(data))
-		var lenBuf = make([]byte, 4)
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		var _, err1 = raw.Write(lenBuf)
-		var _, err2 = raw.Write(data)
-		if err1 != nil || err2 != nil {
-			ndc.callback.EndCall(fmt.Errorf("%s-%s", err1, err2))
+		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
+		var Wn, errW = raw.Write(lenBuf)
+		if errW != nil || Wn != 4 {
+			ndc.callback.EndCall(fmt.Errorf("write data len err: %d-%s", Wn, errW))
 			_ = raw.Close()
 			return
+		}
+
+		for startIdx := 0; startIdx < dataLen; startIdx = startIdx + IceUdpMtu {
+			if startIdx+IceUdpMtu > dataLen {
+				Wn, errW = raw.Write(data[startIdx:dataLen])
+			} else {
+				Wn, errW = raw.Write(data[startIdx : startIdx+IceUdpMtu])
+			}
+			if errW != nil || Wn != 0 {
+				ndc.callback.EndCall(fmt.Errorf("write data err: %d-%s", Wn, errW))
+				_ = raw.Close()
+				return
+			}
 		}
 	}
 }

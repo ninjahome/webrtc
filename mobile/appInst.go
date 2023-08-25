@@ -11,7 +11,9 @@ const (
 	H264TypMask           = 0x1f
 	MaxConnBufferSize     = 1 << 22
 	MaxDataConnBufferSize = 1 << 16
-	MaxInBufferSize       = 1 << 16
+	MaxInBufferSize       = 1 << 10
+
+	IceUdpMtu = 1 << 10
 )
 
 var (

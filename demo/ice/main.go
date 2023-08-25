@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
@@ -144,18 +145,31 @@ func main() {
 	}()
 
 	// Receive messages in a loop from the remote peer
-	buf := make([]byte, 1<<24)
 	var file, errF = os.Create("offer.h264")
 	if errF != nil {
 		panic(errF)
 	}
+	var lenBuf = make([]byte, 4)
+	var MaxDataSize = 1 << 24
 	for {
-		var n, errR = conn.Read(buf)
-		if errR != nil {
-			panic(errR)
+		var n, err = io.ReadFull(conn, lenBuf)
+		if err != nil || n != 4 {
+			panic(err)
 		}
-		fmt.Println("Received:", n)
-		n, err = file.Write(buf[:n])
+		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
+		fmt.Println("======>>>data len", dataLen)
+		if dataLen > MaxDataSize {
+			panic("too big data")
+		}
+
+		var buffer = make([]byte, dataLen)
+		n, err = io.ReadFull(conn, buffer)
+		if err != nil || n != dataLen {
+			panic(err)
+		}
+
+		fmt.Println("Received:", dataLen)
+		n, err = file.Write(buffer)
 		if err != nil {
 			panic(err)
 		}

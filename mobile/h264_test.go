@@ -8,6 +8,7 @@ import (
 	"github.com/nareix/joy4/codec/h264parser"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/webrtc/v3"
+	"net"
 	"strings"
 	"testing"
 )
@@ -142,4 +143,14 @@ func TestLittleEndian(t *testing.T) {
 			break
 		}
 	}
+}
+func TestConnection(t *testing.T) {
+	var _, err = net.ListenUDP("udp", &net.UDPAddr{
+		Port: 59714,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("========>?>>>success")
+	select {}
 }
