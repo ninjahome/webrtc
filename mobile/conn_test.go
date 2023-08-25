@@ -52,7 +52,7 @@ func (t testConnCallback) OfferForCalleeCreated(s string) {
 	fmt.Println(s)
 }
 
-func (t testConnCallback) EndCall() {
+func (t testConnCallback) EndCall(err error) {
 	//TODO implement me
 	panic("implement me")
 }
