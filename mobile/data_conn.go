@@ -116,7 +116,7 @@ func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser
 	}
 }
 
-func (ndc *NinjaDataConn) setRemoteDescription(answer string) error {
+func (ndc *NinjaDataConn) SetRemoteDesc(answer string) error {
 	var sdp = webrtc.SessionDescription{}
 	var err = utils.Decode(answer, &sdp)
 	if err != nil {
@@ -210,7 +210,7 @@ func CreateCalleeDataConn(offerStr string, callback ConnectCallBack) (*NinjaData
 	}
 	ndc.callback = callback
 
-	err = ndc.setRemoteDescription(offerStr)
+	err = ndc.SetRemoteDesc(offerStr)
 	if err != nil {
 		return nil, err
 	}

@@ -37,8 +37,8 @@ type AppInst struct {
 	appLocker sync.RWMutex
 
 	CallBack
-
-	p2pConn *NinjaConn
+	p2pConn NinjaConn
+	//p2pConn *NinjaRtpConn
 	//p2pConn *NinjaDataConn
 
 	localVideoPacket chan []byte

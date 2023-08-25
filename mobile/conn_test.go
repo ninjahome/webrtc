@@ -59,7 +59,7 @@ func (t testConnCallback) EndCall(err error) {
 
 func TestCreateConnectionAsCaller(t *testing.T) {
 	var cb = &testConnCallback{}
-	var conn, err = CreateConnectionAsCaller(cb)
+	var conn, err = CreateCallerRtpConn(cb)
 	if err != nil {
 		t.Fatal(err)
 	}

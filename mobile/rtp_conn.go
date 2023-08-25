@@ -21,7 +21,7 @@ type ConnectCallBack interface {
 	EndCall(error)
 }
 
-type NinjaConn struct {
+type NinjaRtpConn struct {
 	status     webrtc.PeerConnectionState
 	conn       *webrtc.PeerConnection
 	videoTrack *webrtc.TrackLocalStaticSample
@@ -38,7 +38,7 @@ type NinjaConn struct {
 *
 ************************************************************************************************************/
 
-func (nc *NinjaConn) Write(p []byte) (n int, err error) {
+func (nc *NinjaRtpConn) Write(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return
 	}
@@ -54,7 +54,7 @@ func (nc *NinjaConn) Write(p []byte) (n int, err error) {
 *
 ************************************************************************************************************/
 
-func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+func (nc *NinjaRtpConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	fmt.Printf("Track has started, of type %d: %s %s\n", track.PayloadType(), track.Codec().MimeType, track.Kind())
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		return
@@ -69,7 +69,7 @@ func (nc *NinjaConn) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRece
 	}
 }
 
-func (nc *NinjaConn) consumeInVideo(iceConnectedCtx context.Context) {
+func (nc *NinjaRtpConn) consumeInVideo(iceConnectedCtx context.Context) {
 	<-iceConnectedCtx.Done()
 	fmt.Println("======>>>start to reading remote video data")
 	for {
@@ -84,7 +84,7 @@ func (nc *NinjaConn) consumeInVideo(iceConnectedCtx context.Context) {
 	}
 }
 
-func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
+func (nc *NinjaRtpConn) readLocalVideo(iceConnectedCtx context.Context) {
 	<-iceConnectedCtx.Done()
 	fmt.Println("======>>> start to read video data:")
 	for {
@@ -103,7 +103,7 @@ func (nc *NinjaConn) readLocalVideo(iceConnectedCtx context.Context) {
 	}
 }
 
-func (nc *NinjaConn) readLocalAudio(iceConnectedCtx context.Context) {
+func (nc *NinjaRtpConn) readLocalAudio(iceConnectedCtx context.Context) {
 	<-iceConnectedCtx.Done()
 	for {
 		var data, err = nc.callback.RawMicroData()
@@ -120,16 +120,16 @@ func (nc *NinjaConn) readLocalAudio(iceConnectedCtx context.Context) {
 	}
 }
 
-func (nc *NinjaConn) Close() {
+func (nc *NinjaRtpConn) Close() {
 
 }
 
-func (nc *NinjaConn) IsConnected() bool {
+func (nc *NinjaRtpConn) IsConnected() bool {
 	//fmt.Println("======>>>status:", nc.status)
 	return nc.status == webrtc.PeerConnectionStateConnected
 }
 
-func (nc *NinjaConn) setRemoteDescription(des string) error {
+func (nc *NinjaRtpConn) SetRemoteDesc(des string) error {
 	offer := webrtc.SessionDescription{}
 	var errEC = utils.Decode(des, &offer)
 	if errEC != nil {
@@ -142,7 +142,7 @@ func (nc *NinjaConn) setRemoteDescription(des string) error {
 	return nil
 }
 
-func (nc *NinjaConn) createAnswerForCaller() (string, error) {
+func (nc *NinjaRtpConn) createAnswerForCaller() (string, error) {
 	fmt.Println("======>>>creating answer for caller")
 	var answer, errA = nc.conn.CreateAnswer(nil)
 	if errA != nil {
@@ -165,7 +165,7 @@ func (nc *NinjaConn) createAnswerForCaller() (string, error) {
 	return answerStr, nil
 }
 
-func (nc *NinjaConn) createOfferForCallee() (string, error) {
+func (nc *NinjaRtpConn) createOfferForCallee() (string, error) {
 	fmt.Println("======>>>creating offer for callee")
 
 	var offer, errOffer = nc.conn.CreateOffer(nil)
@@ -192,9 +192,9 @@ func (nc *NinjaConn) createOfferForCallee() (string, error) {
 *
 ************************************************************************************************************/
 
-func createBasicConn() (*NinjaConn, error) {
+func createBasicConn() (*NinjaRtpConn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
-	var conn = &NinjaConn{
+	var conn = &NinjaRtpConn{
 		status:     webrtc.PeerConnectionStateNew,
 		inVideoBuf: make(chan *rtp.Packet, MaxConnBufferSize),
 	}
@@ -262,7 +262,7 @@ func createBasicConn() (*NinjaConn, error) {
 	return conn, nil
 }
 
-func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaConn, error) {
+func CreateCalleeRtpConn(offerStr string, callback ConnectCallBack) (*NinjaRtpConn, error) {
 	fmt.Println("======>>>start to create answering conn")
 	var nc, err = createBasicConn()
 	if err != nil {
@@ -270,7 +270,7 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 	}
 	nc.callback = callback
 
-	if err := nc.setRemoteDescription(offerStr); err != nil {
+	if err := nc.SetRemoteDesc(offerStr); err != nil {
 		return nil, err
 	}
 
@@ -301,7 +301,7 @@ func CreateConnectAsCallee(offerStr string, callback ConnectCallBack) (*NinjaCon
 	return nc, nil
 }
 
-func CreateConnectionAsCaller(back ConnectCallBack) (*NinjaConn, error) {
+func CreateCallerRtpConn(back ConnectCallBack) (*NinjaRtpConn, error) {
 	fmt.Println("======>>>start to create calling conn")
 	var nc, errConn = createBasicConn()
 	if errConn != nil {

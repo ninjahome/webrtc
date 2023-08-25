@@ -27,7 +27,7 @@ var (
 func StartVideo(cb CallBack) error {
 	initSdk(cb)
 
-	var peerConnection, err = CreateConnectionAsCaller(_inst) //CreateCallerDataConn(_inst) //CreateConnectionAsCaller(_inst)
+	var peerConnection, err = CreateCallerIceConn(_inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 
 	initSdk(cb)
 
-	var peerConnection, err = CreateConnectAsCallee(offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateConnectAsCallee(offerStr, _inst)
+	var peerConnection, err = CreateCalleeIceConn(offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func SendVideoToPeer(data []byte) error {
 }
 
 func SetAnswerForOffer(answer string) {
-	var err = _inst.p2pConn.setRemoteDescription(answer)
+	var err = _inst.p2pConn.SetRemoteDesc(answer)
 	if err != nil {
 		fmt.Println("======>>>err:", err)
 		_inst.EndCall(err)

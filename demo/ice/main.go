@@ -5,23 +5,19 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
+	webrtcLib "github.com/ninjahome/webrtc/mobile"
 	"github.com/pion/ice/v2"
 	"github.com/pion/randutil"
 	"github.com/pion/stun"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
 const (
 	ICETimeOut = 40 * time.Second
 )
-
-type Signal struct {
-	ICECandidates []string `json:"ice_candidates"`
-	ICEFrag       string   `json:"ice_frag"`
-	ICEPwd        string   `json:"ice_pwd"`
-}
 
 var (
 	isControlling bool
@@ -44,7 +40,7 @@ func main() {
 		panic(err)
 	}
 	var timeOut = ICETimeOut
-	sig := &Signal{}
+	sig := &webrtcLib.IceConnParam{}
 	iceAgent, err = ice.NewAgent(&ice.AgentConfig{
 		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
 		Urls:          []*stun.URI{u},
@@ -62,7 +58,7 @@ func main() {
 		}
 		fmt.Println("OnCandidate success", c.Marshal())
 
-		sig.ICECandidates = append(sig.ICECandidates, c.Marshal())
+		sig.Candidates = append(sig.Candidates, c.Marshal())
 	}); err != nil {
 		panic(err)
 	}
@@ -78,8 +74,8 @@ func main() {
 		panic(err)
 	}
 
-	sig.ICEFrag = localUfrag
-	sig.ICEPwd = localPwd
+	sig.Frag = localUfrag
+	sig.Pwd = localPwd
 
 	if err = iceAgent.GatherCandidates(); err != nil {
 		panic(err)
@@ -90,17 +86,17 @@ func main() {
 	fmt.Println(sig)
 	fmt.Println(internal.Encode(sig))
 
-	remoteSig := make(chan *Signal, 1)
+	remoteSig := make(chan *webrtcLib.IceConnParam, 1)
 	if isControlling {
 		http.HandleFunc("/sdp", func(w http.ResponseWriter, r *http.Request) {
-			s := &Signal{}
+			s := &webrtcLib.IceConnParam{}
 			body, _ := io.ReadAll(r.Body)
 			internal.Decode(string(body), s)
 			remoteSig <- s
 		})
 		go func() { panic(http.ListenAndServe(*offerAddr, nil)) }()
 	} else {
-		s := &Signal{}
+		s := &webrtcLib.IceConnParam{}
 		internal.Decode(internal.MustReadStdin(), &s)
 		remoteSig <- s
 	}
@@ -108,10 +104,10 @@ func main() {
 	remote := <-remoteSig
 	fmt.Println(remote)
 
-	if len(remote.ICECandidates) == 0 {
+	if len(remote.Candidates) == 0 {
 		panic("no valid candidates")
 	}
-	for _, candidate := range remote.ICECandidates {
+	for _, candidate := range remote.Candidates {
 		c, err := ice.UnmarshalCandidate(candidate)
 		if err != nil {
 			panic(err)
@@ -123,9 +119,9 @@ func main() {
 
 	var conn *ice.Conn
 	if isControlling {
-		conn, err = iceAgent.Dial(context.TODO(), remote.ICEFrag, remote.ICEPwd)
+		conn, err = iceAgent.Dial(context.TODO(), remote.Frag, remote.Pwd)
 	} else {
-		conn, err = iceAgent.Accept(context.TODO(), remote.ICEFrag, remote.ICEPwd)
+		conn, err = iceAgent.Accept(context.TODO(), remote.Frag, remote.Pwd)
 	}
 	if err != nil {
 		panic(err)
@@ -148,13 +144,20 @@ func main() {
 	}()
 
 	// Receive messages in a loop from the remote peer
-	buf := make([]byte, 1500)
+	buf := make([]byte, 1<<24)
+	var file, errF = os.Create("offer.h264")
+	if errF != nil {
+		panic(errF)
+	}
 	for {
-		n, err := conn.Read(buf)
+		var n, errR = conn.Read(buf)
+		if errR != nil {
+			panic(errR)
+		}
+		fmt.Println("Received:", n)
+		n, err = file.Write(buf[:n])
 		if err != nil {
 			panic(err)
 		}
-
-		fmt.Printf("Received: '%s'\n", string(buf[:n]))
 	}
 }
