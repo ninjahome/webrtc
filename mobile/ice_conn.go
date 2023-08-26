@@ -2,13 +2,10 @@ package webrtcLib
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
-	"io"
 	"time"
 )
 
@@ -129,66 +126,34 @@ func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
-	var lenBuf = make([]byte, LenBufSize)
+	var writer = &h264Conn{connWriter: conn}
 	for {
-		var writeN = 0
-		var errW error
 		var data, err = nic.callback.RawCameraData()
-		var dataLen = len(data)
-
-		fmt.Println("======>>>got from camera:", dataLen, hex.EncodeToString(data))
 		if err != nil {
 			nic.callback.EndCall(err)
 			return
 		}
-
-		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
-		writeN, errW = conn.Write(lenBuf)
-		if writeN != LenBufSize || errW != nil {
-			nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
+		var n, errW = writer.Write(data)
+		if errW != nil {
+			nic.callback.EndCall(errW)
 			return
 		}
-
-		for startIdx := 0; startIdx < dataLen; startIdx = startIdx + IceUdpMtu {
-			if startIdx+IceUdpMtu > dataLen {
-				writeN, errW = conn.Write(data[startIdx:dataLen])
-			} else {
-				writeN, errW = conn.Write(data[startIdx : startIdx+IceUdpMtu])
-			}
-			if errW != nil || writeN == 0 {
-				nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
-				return
-			}
-			fmt.Println("======>>>write to peer :", startIdx, writeN)
-		}
+		fmt.Println("======>>>write to peer :", len(data), n)
 	}
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var lenBuf = make([]byte, LenBufSize)
+	var reader = &h264Conn{connReader: conn}
+
 	for {
-		var n, err = io.ReadFull(conn, lenBuf)
-		if err != nil {
+		var buf []byte
+		var n, err = reader.Read(&buf)
+		if err != nil || n == 0 {
 			nic.callback.EndCall(err)
 			_ = conn.Close()
 			return
 		}
-		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
-		fmt.Println("======>>>read remote video dataLen:", dataLen)
-		if dataLen > MaxDataSize {
-			nic.callback.EndCall(fmt.Errorf("too big data size:%d", dataLen))
-			_ = conn.Close()
-			return
-		}
-		var buf = make([]byte, dataLen)
-		n, err = io.ReadFull(conn, buf)
-		if n != dataLen || err != nil {
-			nic.callback.EndCall(fmt.Errorf("======>>>read video data failed %d-%s", n, err))
-			_ = conn.Close()
-			return
-		}
-		fmt.Println("======>>>got from remote:", dataLen, hex.EncodeToString(buf))
-
+		fmt.Println("======>>>got from remote:", n) //, hex.EncodeToString(buf))
 		nic.inCache <- buf
 	}
 }
