@@ -47,6 +47,7 @@ func (ndc *NinjaDataConn) OnVideoDataChOpen(channel *webrtc.DataChannel) {
 	go ndc.writeDataToApp()
 	go ndc.writeVideoDataToRemote(raw)
 }
+
 func (ndc *NinjaDataConn) Close() {
 
 }
@@ -173,7 +174,7 @@ func createBasicDataConn() (*NinjaDataConn, error) {
 	}
 	var ndc = &NinjaDataConn{
 		status:  webrtc.PeerConnectionStateNew,
-		inCache: make(chan []byte, MaxDataConnBufferSize),
+		inCache: make(chan []byte, MaxInBufferSize),
 	}
 	ndc.PeerConnection = peerConnection
 	return ndc, nil

@@ -7,6 +7,7 @@ import (
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
+	"io"
 	"time"
 )
 
@@ -39,6 +40,7 @@ type NinjaIceConn struct {
 	iceCancel   context.CancelFunc
 	isOffer     bool
 	onConnected OnConnected
+	inCache     chan []byte
 }
 
 func (nic *NinjaIceConn) createParam() (string, error) {
@@ -121,6 +123,7 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 	go nic.writeVideoToRemote(conn)
 	go nic.readVideoFromRemote(conn)
+	go nic.writeDataToApp()
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
@@ -160,15 +163,36 @@ func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var buf = make([]byte, MaxConnBufferSize)
+	var lenBuf = make([]byte, 4)
 	for {
-		var n, err = conn.Read(buf)
+		var n, err = io.ReadFull(conn, lenBuf)
 		if err != nil {
 			nic.callback.EndCall(err)
+			_ = conn.Close()
 			return
 		}
-		fmt.Println("======>>>", n)
-		_, err = nic.callback.GotVideoData(buf[:n])
+		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
+		fmt.Println("======>>>dataLen:", dataLen)
+		var buf = make([]byte, dataLen)
+		n, err = io.ReadFull(conn, buf)
+		if n != dataLen || err != nil {
+			nic.callback.EndCall(fmt.Errorf("======>>>read video data failed %d-%s", n, err))
+			_ = conn.Close()
+			return
+		}
+		nic.inCache <- buf
+	}
+}
+
+func (nic *NinjaIceConn) writeDataToApp() {
+	for {
+		var data, ok = <-nic.inCache
+		if !ok {
+			nic.callback.EndCall(fmt.Errorf("no more remote data"))
+			return
+		}
+
+		var _, err = nic.callback.GotVideoData(data)
 		if err != nil {
 			nic.callback.EndCall(err)
 			return
@@ -183,7 +207,9 @@ func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
 		callback:   back,
 		iceContext: iceCtx,
 		iceCancel:  iceCancel,
+		inCache:    make(chan []byte, MaxInBufferSize),
 	}
+
 	nic.onConnected = nic.iceConnectionOn
 
 	var iceAgent, err = ice.NewAgent(iceConfig)
