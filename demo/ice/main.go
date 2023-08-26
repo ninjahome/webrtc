@@ -27,7 +27,7 @@ var (
 
 func main() {
 	offerAddr := flag.String("offer-address", ":50000", "Address that the Offer HTTP server is hosted on.")
-	flag.BoolVar(&isControlling, "offer", false, "is ICE Agent controlling")
+	flag.BoolVar(&isControlling, "o", false, "is ICE Agent controlling")
 	flag.Parse()
 
 	if isControlling {

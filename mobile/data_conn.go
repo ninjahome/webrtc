@@ -12,7 +12,7 @@ import (
 const (
 	VideoDataChName = "ninja-data-video"
 	AudioDataChName = "ninja-data-audio"
-	MaxDataSize     = 1 << 26
+	MaxDataSize     = 1 << 24
 )
 
 type NinjaDataConn struct {
@@ -44,7 +44,7 @@ func (ndc *NinjaDataConn) OnVideoDataChOpen(channel *webrtc.DataChannel) {
 		return
 	}
 	go ndc.readingRemoteVideoData(raw)
-	go ndc.writeDataToApp()
+	go ndc.writeRemoteDataToApp()
 	go ndc.writeVideoDataToRemote(raw)
 }
 
@@ -56,7 +56,7 @@ func (ndc *NinjaDataConn) IsConnected() bool {
 	return ndc.status == webrtc.PeerConnectionStateConnected
 }
 func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser) {
-	var lenBuf = make([]byte, 4)
+	var lenBuf = make([]byte, LenBufSize)
 	for {
 		n, err := io.ReadFull(raw, lenBuf)
 		if err != nil {
@@ -67,7 +67,11 @@ func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser
 		if dataLen > MaxDataSize {
 			ndc.callback.EndCall(fmt.Errorf("too big data"))
 		}
-
+		if dataLen > MaxDataSize {
+			ndc.callback.EndCall(fmt.Errorf("too big data size:%d", dataLen))
+			_ = raw.Close()
+			return
+		}
 		var buffer = make([]byte, dataLen)
 		n, err = io.ReadFull(raw, buffer)
 		if err != nil || n != dataLen {
@@ -80,7 +84,7 @@ func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser
 	}
 }
 
-func (ndc *NinjaDataConn) writeDataToApp() {
+func (ndc *NinjaDataConn) writeRemoteDataToApp() {
 	for {
 		var data, ok = <-ndc.inCache
 		if !ok {
@@ -97,7 +101,7 @@ func (ndc *NinjaDataConn) writeDataToApp() {
 }
 
 func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser) {
-	var lenBuf = make([]byte, 4)
+	var lenBuf = make([]byte, LenBufSize)
 	for {
 		var data, err = ndc.callback.RawCameraData()
 		if err != nil {
@@ -108,8 +112,8 @@ func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser
 		//fmt.Println("======>>>write video data to peer", len(data)) // hex.EncodeToString(data))
 		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
 		var Wn, errW = raw.Write(lenBuf)
-		if errW != nil || Wn != 4 {
-			ndc.callback.EndCall(fmt.Errorf("write data len err: %d-%s", Wn, errW))
+		if errW != nil || Wn != LenBufSize {
+			ndc.callback.EndCall(fmt.Errorf("write data len err: %d-%v", Wn, errW))
 			_ = raw.Close()
 			return
 		}
@@ -120,8 +124,8 @@ func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser
 			} else {
 				Wn, errW = raw.Write(data[startIdx : startIdx+IceUdpMtu])
 			}
-			if errW != nil || Wn != 0 {
-				ndc.callback.EndCall(fmt.Errorf("write data err: %d-%s", Wn, errW))
+			if errW != nil || Wn == 0 {
+				ndc.callback.EndCall(fmt.Errorf("write data err: %d-%v", Wn, errW))
 				_ = raw.Close()
 				return
 			}

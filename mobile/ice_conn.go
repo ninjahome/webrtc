@@ -3,6 +3,7 @@ package webrtcLib
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/ice/v2"
@@ -14,13 +15,14 @@ import (
 const (
 	ICETimeOut = 40 * time.Second
 	StunUrlStr = "stun:stun.l.google.com:19302"
+	LenBufSize = 4
 )
 
 var (
 	timeOut    = ICETimeOut
-	stunUrl, _ = stun.ParseURI("stun:stun.l.google.com:19302")
+	stunUrl, _ = stun.ParseURI(StunUrlStr)
 	iceConfig  = &ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
 		Urls:          []*stun.URI{stunUrl},
 		FailedTimeout: &timeOut,
 	}
@@ -127,29 +129,29 @@ func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
-	var lenBuf = make([]byte, 4)
+	var lenBuf = make([]byte, LenBufSize)
 	for {
 		var writeN = 0
 		var errW error
 		var data, err = nic.callback.RawCameraData()
-		var dateLen = len(data)
+		var dataLen = len(data)
 
-		fmt.Println("======>>>got from camera:", dateLen)
+		fmt.Println("======>>>got from camera:", dataLen, hex.EncodeToString(data))
 		if err != nil {
 			nic.callback.EndCall(err)
 			return
 		}
 
-		binary.BigEndian.PutUint32(lenBuf, uint32(dateLen))
+		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
 		writeN, errW = conn.Write(lenBuf)
-		if writeN != 4 || errW != nil {
+		if writeN != LenBufSize || errW != nil {
 			nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
 			return
 		}
 
-		for startIdx := 0; startIdx < dateLen; startIdx = startIdx + IceUdpMtu {
-			if startIdx+IceUdpMtu > dateLen {
-				writeN, errW = conn.Write(data[startIdx:dateLen])
+		for startIdx := 0; startIdx < dataLen; startIdx = startIdx + IceUdpMtu {
+			if startIdx+IceUdpMtu > dataLen {
+				writeN, errW = conn.Write(data[startIdx:dataLen])
 			} else {
 				writeN, errW = conn.Write(data[startIdx : startIdx+IceUdpMtu])
 			}
@@ -157,13 +159,13 @@ func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
 				nic.callback.EndCall(fmt.Errorf("write err:%s write n:%d", errW, writeN))
 				return
 			}
-			//fmt.Println("======>>>write to peer :", writeN, startIdx, IceUdpMtu)
+			fmt.Println("======>>>write to peer :", startIdx, writeN)
 		}
 	}
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var lenBuf = make([]byte, 4)
+	var lenBuf = make([]byte, LenBufSize)
 	for {
 		var n, err = io.ReadFull(conn, lenBuf)
 		if err != nil {
@@ -172,7 +174,12 @@ func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
 			return
 		}
 		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
-		fmt.Println("======>>>dataLen:", dataLen)
+		fmt.Println("======>>>read remote video dataLen:", dataLen)
+		if dataLen > MaxDataSize {
+			nic.callback.EndCall(fmt.Errorf("too big data size:%d", dataLen))
+			_ = conn.Close()
+			return
+		}
 		var buf = make([]byte, dataLen)
 		n, err = io.ReadFull(conn, buf)
 		if n != dataLen || err != nil {
@@ -180,6 +187,8 @@ func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
 			_ = conn.Close()
 			return
 		}
+		fmt.Println("======>>>got from remote:", dataLen, hex.EncodeToString(buf))
+
 		nic.inCache <- buf
 	}
 }
@@ -222,7 +231,6 @@ func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
 		fmt.Printf("ICE Connection State has changed: %s\n", state.String())
 		nic.status = state
 		if state == ice.ConnectionStateFailed {
-			iceCancel()
 			back.EndCall(fmt.Errorf("ice connection failed"))
 			return
 		}

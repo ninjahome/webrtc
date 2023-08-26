@@ -155,29 +155,4 @@ func h254Write2(p []byte, callback func(typ int, h264data []byte)) (n int, err e
 	p = p[sCodeLen:]
 	callback(typ, p)
 	return origLen, nil
-
-	//if typ == 7 {
-	//	startIdx = bytes.Index(p, startCode)
-	//	if startIdx < 0 {
-	//		return 0, fmt.Errorf("error sps frame")
-	//	}
-	//	callback(typ, p[:startIdx])
-	//
-	//	p = p[startIdx+sCodeLen:]
-	//	var nextTyp = int(p[0] & H264TypMask)
-	//	if nextTyp != 8 {
-	//		return 0, fmt.Errorf("error pps frame")
-	//	}
-	//	callback(nextTyp, p)
-	//	return origLen, nil
-	//}
-	//
-	//if typ > 0 {
-	//	callback(typ, p)
-	//	//if typ != 1 && typ != 5 {
-	//	//	fmt.Println("==================>new type", typ)
-	//	//}
-	//	return origLen, nil
-	//}
-	//return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
 }
