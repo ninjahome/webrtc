@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
 	webrtcLib "github.com/ninjahome/webrtc/mobile"
 	"github.com/pion/ice/v2"
-	"github.com/pion/randutil"
 	"github.com/pion/stun"
 	"io"
 	"net/http"
@@ -128,50 +126,43 @@ func main() {
 		panic(err)
 	}
 	// Send messages in a loop to the remote peer
-	go func() {
-		for {
-			time.Sleep(time.Second * 3)
-
-			val, err := randutil.GenerateCryptoRandomString(15, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-			if err != nil {
-				panic(err)
-			}
-			if _, err = conn.Write([]byte(val)); err != nil {
-				panic(err)
-			}
-
-			fmt.Printf("Sent: '%s'\n", val)
-		}
-	}()
+	//go func() {
+	//	for {
+	//		time.Sleep(time.Second * 3)
+	//
+	//		val, err := randutil.GenerateCryptoRandomString(15, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	//		if err != nil {
+	//			panic(err)
+	//		}
+	//		if _, err = conn.Write([]byte(val)); err != nil {
+	//			panic(err)
+	//		}
+	//
+	//		fmt.Printf("Sent: '%s'\n", val)
+	//	}
+	//}()
 
 	// Receive messages in a loop from the remote peer
 	var file, errF = os.Create("offer.h264")
 	if errF != nil {
 		panic(errF)
 	}
-	var lenBuf = make([]byte, 4)
-	var MaxDataSize = 1 << 24
-	for {
-		var n, err = io.ReadFull(conn, lenBuf)
-		if err != nil || n != 4 {
-			panic(err)
-		}
-		var dataLen = int(binary.BigEndian.Uint32(lenBuf))
-		fmt.Println("======>>>data len", dataLen)
-		if dataLen > MaxDataSize {
-			panic("too big data")
+	var dataCh = make(chan []byte, 1024)
+	go func() {
+		for {
+
+			var buf = <-dataCh
+			fmt.Println("Received:", len(buf))
+
+			var _, err = file.Write(buf)
+			if err != nil {
+				panic(err)
+			}
 		}
 
-		var buffer = make([]byte, dataLen)
-		n, err = io.ReadFull(conn, buffer)
-		if err != nil || n != dataLen {
-			panic(err)
-		}
-
-		fmt.Println("Received:", dataLen)
-		n, err = file.Write(buffer)
-		if err != nil {
-			panic(err)
-		}
-	}
+	}()
+	var reader = webrtcLib.NewH264Conn(conn, conn)
+	err = reader.LoopRead(dataCh)
+	fmt.Println(err)
+	_ = conn.Close()
 }

@@ -12,8 +12,6 @@ const (
 	MaxConnBufferSize     = 1 << 22
 	MaxDataConnBufferSize = 1 << 16
 	MaxInBufferSize       = 1 << 10
-
-	IceUdpMtu = 1 << 10
 )
 
 var (

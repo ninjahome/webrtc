@@ -54,20 +54,13 @@ func (ndc *NinjaDataConn) IsConnected() bool {
 	return ndc.status == webrtc.PeerConnectionStateConnected
 }
 func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser) {
-
-	var reader = &h264Conn{connReader: raw}
-
-	for {
-		var buf []byte
-		var n, err = reader.Read(&buf)
-		if err != nil || n == 0 {
-			ndc.callback.EndCall(err)
-			_ = raw.Close()
-			return
-		}
-		fmt.Println("======>>>got from remote:", n) //, hex.EncodeToString(buf))
-		ndc.inCache <- buf
+	var reader = &H264Conn{connReader: raw}
+	var err = reader.LoopRead(ndc.inCache)
+	if err != nil {
+		ndc.callback.EndCall(fmt.Errorf("read video finished"))
+		_ = raw.Close()
 	}
+	return
 }
 
 func (ndc *NinjaDataConn) writeRemoteDataToApp() {
@@ -87,19 +80,10 @@ func (ndc *NinjaDataConn) writeRemoteDataToApp() {
 }
 
 func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser) {
-	var writer = &h264Conn{connWriter: raw}
-	for {
-		var data, err = ndc.callback.RawCameraData()
-		if err != nil {
-			ndc.callback.EndCall(err)
-			return
-		}
-		var n, errW = writer.Write(data)
-		if errW != nil {
-			ndc.callback.EndCall(errW)
-			return
-		}
-		fmt.Println("======>>>write to peer :", len(data), n)
+	var err = FrameWrite(ndc.callback.RawCameraData, raw)
+	if err != nil {
+		ndc.callback.EndCall(err)
+		_ = raw.Close()
 	}
 }
 

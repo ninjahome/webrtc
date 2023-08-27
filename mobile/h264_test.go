@@ -70,17 +70,13 @@ func TestBigEndian(t *testing.T) {
 	}
 	fmt.Println(bts)
 	var buf = make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, 1188)
+	binary.BigEndian.PutUint32(buf, 2731259887)
 	fmt.Println(binary.BigEndian.Uint32(buf))
+	fmt.Println(hex.EncodeToString(buf))
 	fmt.Println(binary.LittleEndian.Uint32(buf))
 	fmt.Println(hex.EncodeToString(buf))
-	fmt.Println((buf))
+	fmt.Println(buf)
 
-	binary.LittleEndian.PutUint32(buf, 1188)
-	fmt.Println(binary.BigEndian.Uint32(buf))
-	fmt.Println(binary.LittleEndian.Uint32(buf))
-	fmt.Println(hex.EncodeToString(buf))
-	fmt.Println((buf))
 }
 func TestSpsTest(t *testing.T) {
 	fmt.Println(0x41 & 0x1F)
