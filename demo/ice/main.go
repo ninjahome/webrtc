@@ -44,6 +44,7 @@ func main() {
 		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
 		Urls:          []*stun.URI{u},
 		FailedTimeout: &timeOut,
+		//BufIO:         webrtcLib.NewIceIoBuf(),
 	})
 	if err != nil {
 		panic(err)

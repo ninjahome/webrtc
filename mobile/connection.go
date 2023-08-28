@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	IceUdpMtu      = 1 << 11
+	IceUdpMtu      = 1<<13 - 8
 	FrameStackSize = 1 << 6
 )
 
@@ -113,6 +113,7 @@ func (tc *H264Conn) readFrame() (*Slice, error) {
 	var frameSizeInBytes = frame.SizeInBytes()
 	var buf = make([]byte, IceUdpMtu+frameSizeInBytes)
 	var n, err = tc.connReader.Read(buf)
+	//fmt.Println("******>>>readFrame data:", err, hex.EncodeToString(buf[:n]))
 	if err != nil || n < frameSizeInBytes {
 		return nil, fmt.Errorf("slice header err: %v-%d", err, n)
 	}
@@ -125,9 +126,10 @@ func (tc *H264Conn) readFrame() (*Slice, error) {
 	buf = buf[frameSizeInBytes:n]
 	var sliceLen = len(buf)
 	if sliceLen != int(frame.CurLen) {
+		fmt.Println("******>>>", sliceLen, frame.String(), hex.EncodeToString(buf))
 		return nil, NCOneBadFrameData
 	}
-	fmt.Println("******>>> tlv got:", frame.String()) //.EncodeToString(buf[:n]))
+	fmt.Println("******>>> tlv got:", frame.String())
 	return &Slice{
 		frame,
 		buf,
