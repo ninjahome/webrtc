@@ -79,12 +79,12 @@ func SendVideoToPeer(data []byte) error {
 	copy(rawData, data)
 
 	if !foundKeyFrame {
-		var idx = bytes.Index(rawData, startCode)
+		var idx = bytes.Index(rawData, VideoAvcStart)
 		if idx < 0 {
 			return nil
 		}
 		//fmt.Println("======>>>rawData:", rawData[idx+sCodeLen], hex.EncodeToString(rawData))
-		if rawData[idx+sCodeLen]&H264TypMask == 7 || rawData[idx+sCodeLen]&H264TypMask == 8 {
+		if rawData[idx+VideoAvcLen]&H264TypMask == 7 || rawData[idx+VideoAvcLen]&H264TypMask == 8 {
 			foundKeyFrame = true
 			fmt.Println("======>>> found key frame")
 		}
@@ -116,29 +116,29 @@ func SetAnswerForOffer(answer string) {
 
 func TestFileData(cb CallBack, data []byte) {
 
-	var startIdx = bytes.Index(data, startCode)
+	var startIdx = bytes.Index(data, VideoAvcStart)
 	if startIdx != 0 {
 		fmt.Println("======>>> invalid h264 stream")
 		return
 	}
 	sleepTime := time.Millisecond * time.Duration(33)
-	data = data[sCodeLen:]
+	data = data[VideoAvcLen:]
 	for {
 		var typ = int(data[0] & H264TypMask)
 		if typ == 7 || typ == 8 {
-			startIdx = bytes.Index(data, startCode)
+			startIdx = bytes.Index(data, VideoAvcStart)
 			if startIdx < 0 {
 				fmt.Println("======>>> find sps or pps err")
 				return
 			}
 			var spsOrPssData = data[0:startIdx]
 			cb.NewVideoData(typ, spsOrPssData)
-			data = data[startIdx+sCodeLen:]
+			data = data[startIdx+VideoAvcLen:]
 			continue
 
 		}
 		if typ > 0 {
-			startIdx = bytes.Index(data, startCode)
+			startIdx = bytes.Index(data, VideoAvcStart)
 			if startIdx < 0 {
 				fmt.Println("======>>> found last frame")
 				cb.NewVideoData(typ, data)
@@ -148,7 +148,7 @@ func TestFileData(cb CallBack, data []byte) {
 			cb.NewVideoData(typ, vdata)
 			time.Sleep(sleepTime)
 
-			data = data[startIdx+sCodeLen:]
+			data = data[startIdx+VideoAvcLen:]
 			continue
 		}
 

@@ -41,7 +41,7 @@ func main() {
 	var timeOut = ICETimeOut
 	sig := &webrtcLib.IceConnParam{}
 	iceAgent, err = ice.NewAgent(&ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
 		Urls:          []*stun.URI{u},
 		FailedTimeout: &timeOut,
 		//BufIO:         webrtcLib.NewIceIoBuf(),
@@ -162,8 +162,13 @@ func main() {
 		}
 
 	}()
-	var reader = webrtcLib.NewH264Conn(conn, conn)
-	err = reader.LoopRead(dataCh)
+
+	var reader = webrtcLib.NewQueueConn(conn, conn)
+	err = reader.ReadFrameData(dataCh)
+
+	//var reader = webrtcLib.NewH264Conn(conn, conn)
+	//err = reader.LoopRead(dataCh)
+
 	fmt.Println(err)
 	_ = conn.Close()
 }

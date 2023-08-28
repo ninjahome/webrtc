@@ -14,9 +14,9 @@ const (
 )
 
 var (
-	startCode = []byte{0x00, 0x00, 0x00, 0x01}
-	sCodeLen  = len(startCode)
-	_inst     = &AppInst{}
+	VideoAvcStart = []byte{0x00, 0x00, 0x00, 0x01}
+	VideoAvcLen   = len(VideoAvcStart)
+	_inst         = &AppInst{}
 )
 
 /************************************************************************************************************
@@ -102,23 +102,23 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 		return 0, nil
 	}
 
-	var startIdx = bytes.Index(p, startCode)
+	var startIdx = bytes.Index(p, VideoAvcStart)
 	if startIdx != 0 {
 		return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
 	}
 
-	var typ = int(p[sCodeLen] & H264TypMask)
+	var typ = int(p[VideoAvcLen] & H264TypMask)
 	var origLen = len(p)
-	p = p[sCodeLen:]
+	p = p[VideoAvcLen:]
 	if typ == 7 {
-		startIdx = bytes.Index(p, startCode)
+		startIdx = bytes.Index(p, VideoAvcStart)
 		if startIdx < 0 {
 			callback(typ, p)
 			return origLen, nil
 		}
 		callback(typ, p[:startIdx])
 
-		p = p[startIdx+sCodeLen:]
+		p = p[startIdx+VideoAvcLen:]
 		var nextTyp = int(p[0] & H264TypMask)
 		if nextTyp != 8 {
 			return 0, fmt.Errorf("error pps frame")

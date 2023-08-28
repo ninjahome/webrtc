@@ -109,12 +109,12 @@ func TestIndex(t *testing.T) {
 	var str = `000000012742001fab405a050c80`
 	var bts, _ = hex.DecodeString(str)
 	fmt.Println(bts)
-	var idx = bytes.Index(bts, startCode)
-	fmt.Println(bts[idx+sCodeLen] & H264TypMask)
+	var idx = bytes.Index(bts, VideoAvcStart)
+	fmt.Println(bts[idx+VideoAvcLen] & H264TypMask)
 	for {
-		var idx = bytes.Index(bts, startCode)
+		var idx = bytes.Index(bts, VideoAvcStart)
 		if idx != -1 {
-			bts = bts[idx+sCodeLen:]
+			bts = bts[idx+VideoAvcLen:]
 			fmt.Println(bts)
 		} else {
 			fmt.Println(bts)

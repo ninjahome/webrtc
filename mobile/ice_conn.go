@@ -116,16 +116,26 @@ func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
-	var err = FrameWrite(nic.callback.RawCameraData, conn)
-	if err != nil {
-		nic.callback.EndCall(err)
-		_ = conn.Close()
+	var writer = NewQueueConn(conn, conn) //{connReader: conn}
+	for {
+		var data, err = nic.callback.RawCameraData()
+		if err != nil {
+			nic.callback.EndCall(err)
+			_ = conn.Close()
+			return
+		}
+		_, err = writer.writeFrameData(data)
+		if err != nil {
+			nic.callback.EndCall(err)
+			_ = conn.Close()
+			return
+		}
 	}
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var reader = &H264Conn{connReader: conn}
-	var err = reader.LoopRead(nic.inCache)
+	var reader = NewQueueConn(conn, conn) //{connReader: conn}
+	var err = reader.ReadFrameData(nic.inCache)
 	if err != nil {
 		nic.callback.EndCall(fmt.Errorf("read video finished"))
 		_ = conn.Close()
