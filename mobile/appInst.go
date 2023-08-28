@@ -35,8 +35,8 @@ type CallBack interface {
 type AppInst struct {
 	appLocker sync.RWMutex
 
-	CallBack
-	p2pConn NinjaConn
+	callback CallBack
+	p2pConn  NinjaConn
 
 	localVideoPacket chan []byte
 	localAudioPacket chan []byte
@@ -48,7 +48,7 @@ func initSdk(cb CallBack) {
 
 	_inst.localVideoPacket = make(chan []byte, MaxInBufferSize)
 	_inst.localAudioPacket = make(chan []byte, MaxInBufferSize)
-	_inst.CallBack = cb
+	_inst.callback = cb
 }
 
 /************************************************************************************************************
@@ -77,15 +77,15 @@ func (ai *AppInst) EndCall(err error) {
 	fmt.Println("======>>>the call will be end:", err)
 }
 
-func (ai *AppInst) AnswerForCallerCreated(a string) {
-	ai.CallBack.AnswerCreated(a)
+func (ai *AppInst) AnswerForCallerCreated(answer string) {
+	ai.callback.AnswerCreated(answer)
 }
-func (ai *AppInst) OfferForCalleeCreated(o string) {
-	ai.CallBack.OfferCreated(o)
+func (ai *AppInst) OfferForCalleeCreated(offer string) {
+	ai.callback.OfferCreated(offer)
 }
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
-	return h254Write(p, ai.NewVideoData)
+	return h254Write(p, ai.callback.NewVideoData)
 	//return h254Write2(p, ai.NewVideoData)
 }
 
