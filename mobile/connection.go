@@ -10,7 +10,7 @@ import (
 
 const (
 	IceUdpMtu      = 1 << 10
-	FrameStackSize = 4
+	FrameStackSize = 1 << 6
 )
 
 var (
@@ -27,7 +27,7 @@ type H264Conn struct {
 	connReader   io.Reader
 	connWriter   io.Writer
 	frameCounter atomic.Uint32
-	Frames       [FrameStackSize]*ReceiveFrame
+	frameStack   [FrameStackSize]*ReceiveFrame
 }
 
 func NewH264Conn(reader io.Reader, writer io.Writer) *H264Conn {
@@ -68,7 +68,9 @@ type Slice struct {
 	Header  *VideoFrame
 	Payload []byte
 }
+
 type ReceiveFrame struct {
+	FrameID     uint16
 	SliceHasGot uint16
 	HasFinished bool
 	Cache       []*Slice
@@ -83,9 +85,10 @@ func (rf *ReceiveFrame) Flush() []byte {
 }
 
 func (rf *ReceiveFrame) String() any {
-	var s = fmt.Sprintf("{slice got:%d\t", rf.SliceHasGot)
+	var s = fmt.Sprintf("{frame id:%d\t", rf.FrameID)
+	s = s + fmt.Sprintf("slice got:%d\t", rf.SliceHasGot)
 	s = s + fmt.Sprintf("has finished:%t\t", rf.HasFinished)
-	s = s + fmt.Sprintf("cache slice:%d}", len(rf.Cache))
+	s = s + fmt.Sprintf("cache size:%d}", len(rf.Cache))
 	return s
 }
 
@@ -118,7 +121,6 @@ func (tc *H264Conn) readFrame() (*Slice, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("******>>> tlv frame:", frame.String())
 
 	buf = buf[frameSizeInBytes:n]
 	var sliceLen = len(buf)
@@ -132,34 +134,32 @@ func (tc *H264Conn) readFrame() (*Slice, error) {
 }
 
 func (tc *H264Conn) LoopRead(buffer chan []byte) error {
-
 	for {
 		var slice, err = tc.readFrame()
 		if err != nil {
 			return err
 		}
-
+		fmt.Println("******>>> tlv frame:", slice.Header.String())
 		var curIdx = slice.Header.FrameID % FrameStackSize
 		var preIdx = (curIdx + FrameStackSize - 1) % FrameStackSize
-		var preFrame = tc.Frames[preIdx]
+		var preFrame = tc.frameStack[preIdx]
 		if preFrame != nil && preFrame.HasFinished {
 			buffer <- preFrame.Flush()
-			tc.Frames[preIdx] = nil
+			tc.frameStack[preIdx] = nil
 			fmt.Println("******>>>push previous frame:", preFrame.String())
 		}
 
-		var curFrame = tc.Frames[curIdx]
-		if curFrame == nil {
+		var curFrame = tc.frameStack[curIdx]
+		if curFrame == nil || curFrame.FrameID != slice.Header.FrameID {
 			fmt.Println("******>>> create new receive frame for slice:",
-				slice.Header.String())
+				curFrame == nil, slice.Header.String())
 			curFrame = &ReceiveFrame{
-				Cache: make([]*Slice, slice.Header.SliceCount),
+				FrameID:     slice.Header.FrameID,
+				SliceHasGot: 0,
+				HasFinished: false,
+				Cache:       make([]*Slice, slice.Header.SliceCount),
 			}
-			tc.Frames[curIdx] = curFrame
-		}
-		if len(curFrame.Cache) < int(slice.Header.CurSliceID) {
-			fmt.Println("*******>>>bad frame slice data:\t", curFrame.String(), slice.Header.String())
-			return NCInvalidVideoFrame
+			tc.frameStack[curIdx] = curFrame
 		}
 
 		curFrame.Cache[slice.Header.CurSliceID] = slice
@@ -172,16 +172,16 @@ func (tc *H264Conn) LoopRead(buffer chan []byte) error {
 		}
 
 		curFrame.HasFinished = true
-		fmt.Println("******>>>one frame finished:", curIdx, curFrame.String())
+		fmt.Println("******>>>one frame finished:", curIdx, slice.Header.String(), curFrame.String())
 		buffer <- curFrame.Flush()
-		tc.Frames[curIdx] = nil
+		tc.frameStack[curIdx] = nil
 	}
 }
 
 func (tc *H264Conn) WriteVideoFrame(buf []byte) (n int, err error) {
 	tc.frameCounter.Add(1)
 	var dataLen = len(buf)
-	fmt.Println("======>>> tlv need to write ", dataLen, hex.EncodeToString(buf))
+	//fmt.Println("======>>> tlv need to write ", dataLen, hex.EncodeToString(buf))
 
 	var sliceSize = dataLen / IceUdpMtu
 	if dataLen%IceUdpMtu > 0 {
@@ -224,7 +224,6 @@ func FrameWrite(source func() ([]byte, error), conn io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("======>>>camera frame:", hex.EncodeToString(data))
 		var _, errW = writer.WriteVideoFrame(data)
 		if errW != nil {
 			return errW
