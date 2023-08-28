@@ -12,17 +12,6 @@ import (
 const (
 	ICETimeOut = 40 * time.Second
 	StunUrlStr = "stun:stun.l.google.com:19302"
-	LenBufSize = 4
-)
-
-var (
-	timeOut    = ICETimeOut
-	stunUrl, _ = stun.ParseURI(StunUrlStr)
-	iceConfig  = &ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
-		Urls:          []*stun.URI{stunUrl},
-		FailedTimeout: &timeOut,
-	}
 )
 
 type IceConnParam struct {
@@ -31,6 +20,7 @@ type IceConnParam struct {
 	Pwd        string   `json:"pwd"`
 }
 type OnConnected func(*ice.Conn)
+
 type NinjaIceConn struct {
 	callback    ConnectCallBack
 	agent       *ice.Agent
@@ -160,6 +150,13 @@ func (nic *NinjaIceConn) writeDataToApp() {
 }
 
 func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
+	var timeOut = ICETimeOut
+	var stunUrl, _ = stun.ParseURI(StunUrlStr)
+	var iceConfig = &ice.AgentConfig{
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
+		Urls:          []*stun.URI{stunUrl},
+		FailedTimeout: &timeOut,
+	}
 	var iceCtx, iceCancel = context.WithCancel(context.TODO())
 	var nic = &NinjaIceConn{
 		status:     ice.ConnectionStateNew,

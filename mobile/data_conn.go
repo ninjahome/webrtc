@@ -10,29 +10,28 @@ import (
 const (
 	VideoDataChName = "ninja-data-video"
 	AudioDataChName = "ninja-data-audio"
-	MaxDataSize     = 1 << 24
 )
 
 type NinjaDataConn struct {
-	status webrtc.PeerConnectionState
-	*webrtc.PeerConnection
+	status   webrtc.PeerConnectionState
+	conn     *webrtc.PeerConnection
 	callback ConnectCallBack
 	inCache  chan []byte
 }
 
 func (ndc *NinjaDataConn) CreateCallerOffer() (string, error) {
-	var offer, err = ndc.CreateOffer(nil)
+	var offer, err = ndc.conn.CreateOffer(nil)
 	if err != nil {
 		return "", err
 	}
-	offerGatheringComplete := webrtc.GatheringCompletePromise(ndc.PeerConnection)
-	err = ndc.SetLocalDescription(offer)
+	offerGatheringComplete := webrtc.GatheringCompletePromise(ndc.conn)
+	err = ndc.conn.SetLocalDescription(offer)
 	if err != nil {
 		return "", err
 	}
 	<-offerGatheringComplete
 
-	return utils.Encode(ndc.LocalDescription())
+	return utils.Encode(ndc.conn.LocalDescription())
 }
 
 func (ndc *NinjaDataConn) OnVideoDataChOpen(channel *webrtc.DataChannel) {
@@ -94,7 +93,7 @@ func (ndc *NinjaDataConn) SetRemoteDesc(answer string) error {
 		return err
 	}
 
-	return ndc.SetRemoteDescription(sdp)
+	return ndc.conn.SetRemoteDescription(sdp)
 }
 
 func (ndc *NinjaDataConn) setLocalDesFromOffer(offerStr string) error {
@@ -103,24 +102,24 @@ func (ndc *NinjaDataConn) setLocalDesFromOffer(offerStr string) error {
 		return err
 	}
 
-	return ndc.SetRemoteDescription(offer)
+	return ndc.conn.SetRemoteDescription(offer)
 }
 func (ndc *NinjaDataConn) createAnswerForOffer() (string, error) {
 
-	var answer, err = ndc.CreateAnswer(nil)
+	var answer, err = ndc.conn.CreateAnswer(nil)
 	if err != nil {
 		return "", err
 	}
 
-	gatherComplete := webrtc.GatheringCompletePromise(ndc.PeerConnection)
+	gatherComplete := webrtc.GatheringCompletePromise(ndc.conn)
 
-	if err = ndc.SetLocalDescription(answer); err != nil {
+	if err = ndc.conn.SetLocalDescription(answer); err != nil {
 		return "", err
 	}
 
 	<-gatherComplete
 
-	return utils.Encode(*ndc.LocalDescription())
+	return utils.Encode(*ndc.conn.LocalDescription())
 }
 func createBasicDataConn() (*NinjaDataConn, error) {
 	var settingEngine = webrtc.SettingEngine{}
@@ -134,7 +133,7 @@ func createBasicDataConn() (*NinjaDataConn, error) {
 		status:  webrtc.PeerConnectionStateNew,
 		inCache: make(chan []byte, MaxInBufferSize),
 	}
-	ndc.PeerConnection = peerConnection
+	ndc.conn = peerConnection
 	return ndc, nil
 }
 
@@ -146,7 +145,7 @@ func CreateCallerDataConn(callback ConnectCallBack) (*NinjaDataConn, error) {
 	}
 	ndc.callback = callback
 
-	var videDataCh, DCErr = ndc.CreateDataChannel(VideoDataChName, nil)
+	var videDataCh, DCErr = ndc.conn.CreateDataChannel(VideoDataChName, nil)
 	if DCErr != nil {
 		return nil, err
 	}
@@ -161,7 +160,7 @@ func CreateCallerDataConn(callback ConnectCallBack) (*NinjaDataConn, error) {
 	}
 	ndc.callback.OfferForCalleeCreated(offer)
 
-	ndc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+	ndc.conn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", state.String())
 		ndc.status = state
 		if state == webrtc.PeerConnectionStateFailed {
@@ -186,7 +185,7 @@ func CreateCalleeDataConn(offerStr string, callback ConnectCallBack) (*NinjaData
 		return nil, err
 	}
 
-	ndc.OnDataChannel(func(channel *webrtc.DataChannel) {
+	ndc.conn.OnDataChannel(func(channel *webrtc.DataChannel) {
 		fmt.Printf("======>>>New DataChannel %s %d\n", channel.Label(), channel.ID())
 		if channel.Label() == VideoDataChName {
 			channel.OnOpen(func() {
@@ -196,7 +195,7 @@ func CreateCalleeDataConn(offerStr string, callback ConnectCallBack) (*NinjaData
 		}
 
 	})
-	ndc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+	ndc.conn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
 		ndc.status = s
 		if s == webrtc.PeerConnectionStateFailed {

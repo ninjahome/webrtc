@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"sync/atomic"
 )
 
 const (
-	IceUdpMtu      = 1<<13 - 8
+	IceUdpMtu      = 1<<13 - NinHeaderLen
 	FrameStackSize = 1 << 6
+	NinHeaderLen   = 8
 )
 
 var (
@@ -23,10 +23,11 @@ type NinjaConn interface {
 	Close()
 	SetRemoteDesc(string) error
 }
+
 type H264Conn struct {
 	connReader   io.Reader
 	connWriter   io.Writer
-	frameCounter atomic.Uint32
+	frameCounter uint16
 	frameStack   [FrameStackSize]*ReceiveFrame
 	sliceCache   chan *Slice
 }
@@ -52,9 +53,6 @@ func (f *VideoFrame) Data() []byte {
 	binary.BigEndian.PutUint16(frameBuf[4:6], f.CurSliceID)
 	binary.BigEndian.PutUint16(frameBuf[6:8], f.CurLen)
 	return frameBuf
-}
-func (f *VideoFrame) SizeInBytes() int {
-	return 8
 }
 
 func (f *VideoFrame) String() any {
@@ -110,20 +108,19 @@ func ParseFrame(frame *VideoFrame, data []byte) error {
 func (tc *H264Conn) readFrame() (*Slice, error) {
 
 	var frame = &VideoFrame{}
-	var frameSizeInBytes = frame.SizeInBytes()
-	var buf = make([]byte, IceUdpMtu+frameSizeInBytes)
+	var buf = make([]byte, IceUdpMtu+NinHeaderLen)
 	var n, err = tc.connReader.Read(buf)
 	//fmt.Println("******>>>readFrame data:", err, hex.EncodeToString(buf[:n]))
-	if err != nil || n < frameSizeInBytes {
+	if err != nil || n < NinHeaderLen {
 		return nil, fmt.Errorf("slice header err: %v-%d", err, n)
 	}
 
-	err = ParseFrame(frame, buf[:frameSizeInBytes])
+	err = ParseFrame(frame, buf[:NinHeaderLen])
 	if err != nil {
 		return nil, err
 	}
 
-	buf = buf[frameSizeInBytes:n]
+	buf = buf[NinHeaderLen:n]
 	var sliceLen = len(buf)
 	if sliceLen != int(frame.CurLen) {
 		fmt.Println("******>>>", sliceLen, frame.String(), hex.EncodeToString(buf))
@@ -195,7 +192,7 @@ func (tc *H264Conn) LoopRead(buffer chan []byte) error {
 }
 
 func (tc *H264Conn) WriteVideoFrame(buf []byte) (n int, err error) {
-	tc.frameCounter.Add(1)
+	tc.frameCounter++
 	var dataLen = len(buf)
 	//fmt.Println("======>>> tlv need to write ", dataLen, hex.EncodeToString(buf))
 
@@ -204,7 +201,7 @@ func (tc *H264Conn) WriteVideoFrame(buf []byte) (n int, err error) {
 		sliceSize = sliceSize + 1
 	}
 	var frame = &VideoFrame{
-		FrameID:    uint16(tc.frameCounter.Load()),
+		FrameID:    tc.frameCounter,
 		SliceCount: uint16(sliceSize),
 	}
 

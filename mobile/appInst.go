@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	H264TypMask           = 0x1f
-	MaxConnBufferSize     = 1 << 22
-	MaxDataConnBufferSize = 1 << 16
-	MaxInBufferSize       = 1 << 10
+	H264TypMask       = 0x1f
+	MaxConnBufferSize = 1 << 22
+	MaxInBufferSize   = 1 << 10
 )
 
 var (
@@ -38,8 +37,6 @@ type AppInst struct {
 
 	CallBack
 	p2pConn NinjaConn
-	//p2pConn *NinjaRtpConn
-	//p2pConn *NinjaDataConn
 
 	localVideoPacket chan []byte
 	localAudioPacket chan []byte
@@ -136,21 +133,4 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 	}
 
 	return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
-}
-func h254Write2(p []byte, callback func(typ int, h264data []byte)) (n int, err error) {
-	if len(p) < 5 {
-		fmt.Println("======>>>invalid rtp packets:", p)
-		return 0, nil
-	}
-
-	var startIdx = bytes.Index(p, startCode)
-	if startIdx != 0 {
-		return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
-	}
-
-	var typ = int(p[sCodeLen] & H264TypMask)
-	var origLen = len(p)
-	p = p[sCodeLen:]
-	callback(typ, p)
-	return origLen, nil
 }
