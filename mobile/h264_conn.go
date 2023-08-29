@@ -103,7 +103,7 @@ func (tc *H264Conn) readFrame() (*Slice, error) {
 	var frame = &VideoFrame{}
 	var buf = make([]byte, IceUdpMtu+NinHeaderLen)
 	var n, err = tc.connReader.Read(buf)
-	//fmt.Println("******>>>readFrame data:", err, hex.EncodeToString(buf[:n]))
+	//fmt.Println("******>>>readFrame data:", err, hex.EncodeToString(Buf[:n]))
 	if err != nil || n < NinHeaderLen {
 		return nil, fmt.Errorf("slice header err: %v-%d", err, n)
 	}
@@ -187,7 +187,7 @@ func (tc *H264Conn) LoopRead(buffer chan []byte) error {
 func (tc *H264Conn) WriteVideoFrame(buf []byte) (n int, err error) {
 	tc.frameCounter++
 	var dataLen = len(buf)
-	//fmt.Println("======>>> tlv need to write ", dataLen, hex.EncodeToString(buf))
+	//fmt.Println("======>>> tlv need to write ", dataLen, hex.EncodeToString(Buf))
 
 	var sliceSize = dataLen / IceUdpMtu
 	if dataLen%IceUdpMtu > 0 {

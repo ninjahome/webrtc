@@ -163,7 +163,7 @@ func main() {
 
 	}()
 
-	var reader = webrtcLib.NewQueueConn(conn, conn)
+	var reader = webrtcLib.NewQueueConn(conn)
 	err = reader.ReadFrameData(dataCh)
 
 	//var reader = webrtcLib.NewH264Conn(conn, conn)

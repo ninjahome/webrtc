@@ -2,6 +2,7 @@ package webrtcLib
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"sync"
@@ -11,11 +12,11 @@ const (
 	H264TypMask       = 0x1f
 	MaxConnBufferSize = 1 << 22
 	MaxInBufferSize   = 1 << 10
+	VideoAvcLen       = 4
 )
 
 var (
 	VideoAvcStart = []byte{0x00, 0x00, 0x00, 0x01}
-	VideoAvcLen   = len(VideoAvcStart)
 	_inst         = &AppInst{}
 )
 
@@ -86,7 +87,6 @@ func (ai *AppInst) OfferForCalleeCreated(offer string) {
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
 	return h254Write(p, ai.callback.NewVideoData)
-	//return h254Write2(p, ai.NewVideoData)
 }
 
 /************************************************************************************************************
@@ -104,7 +104,7 @@ func h254Write(p []byte, callback func(typ int, h264data []byte)) (n int, err er
 
 	var startIdx = bytes.Index(p, VideoAvcStart)
 	if startIdx != 0 {
-		return 0, fmt.Errorf("invalid h64 stream data\n%v", p)
+		return 0, fmt.Errorf("invalid h64 stream data\n%v", hex.EncodeToString(p))
 	}
 
 	var typ = int(p[VideoAvcLen] & H264TypMask)

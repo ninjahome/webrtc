@@ -71,7 +71,14 @@ func (nic *NinjaIceConn) IsConnected() bool {
 }
 
 func (nic *NinjaIceConn) Close() {
+	if nic.inCache == nil {
+		return
+	}
 	nic.iceCancel()
+	_ = nic.agent.Close()
+	close(nic.inCache)
+	nic.inCache = nil
+	nic.agent = nil
 }
 
 func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
@@ -116,29 +123,23 @@ func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
 }
 
 func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
-	var writer = NewQueueConn(conn, conn) //{connReader: conn}
-	for {
-		var data, err = nic.callback.RawCameraData()
-		if err != nil {
-			nic.callback.EndCall(err)
-			_ = conn.Close()
-			return
-		}
-		_, err = writer.writeFrameData(data)
-		if err != nil {
-			nic.callback.EndCall(err)
-			_ = conn.Close()
-			return
-		}
+	var qc = NewQueueConn(conn)
+	var err = qc.WritingFrame(QCDataVideo, nic.callback.RawCameraData)
+	if err != nil {
+		nic.callback.EndCall(err)
+		qc.Close()
+		nic.Close()
+		return
 	}
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var reader = NewQueueConn(conn, conn) //{connReader: conn}
+	var reader = NewQueueConn(conn)
 	var err = reader.ReadFrameData(nic.inCache)
 	if err != nil {
-		nic.callback.EndCall(fmt.Errorf("read video finished"))
+		nic.callback.EndCall(err)
 		_ = conn.Close()
+		nic.Close()
 	}
 	return
 }
@@ -147,13 +148,15 @@ func (nic *NinjaIceConn) writeDataToApp() {
 	for {
 		var data, ok = <-nic.inCache
 		if !ok {
-			nic.callback.EndCall(fmt.Errorf("no more remote data"))
+			nic.Close()
+			nic.callback.EndCall(fmt.Errorf("data stream closed"))
 			return
 		}
-
+		fmt.Println("======>>>data from remote :", len(data)) //,hex.EncodeToString(data))
 		var _, err = nic.callback.GotVideoData(data)
 		if err != nil {
 			nic.callback.EndCall(err)
+			nic.Close()
 			return
 		}
 	}
@@ -163,7 +166,7 @@ func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
 	var timeOut = ICETimeOut
 	var stunUrl, _ = stun.ParseURI(StunUrlStr)
 	var iceConfig = &ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
 		Urls:          []*stun.URI{stunUrl},
 		FailedTimeout: &timeOut,
 	}

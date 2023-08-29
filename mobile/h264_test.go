@@ -150,3 +150,9 @@ func TestConnection(t *testing.T) {
 	fmt.Println("========>?>>>success")
 	select {}
 }
+func TestPoolSize(t *testing.T) {
+	var buf = make([]byte, QCSequenceLen)
+	buf[3] = 11
+	buf = append(buf, byte(QCDataVideo))
+	fmt.Println(hex.EncodeToString(buf))
+}
