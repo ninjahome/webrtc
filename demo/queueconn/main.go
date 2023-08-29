@@ -56,15 +56,22 @@ func main() {
 	var sig = make(chan struct{}, webrtcLib.QCNodePool)
 	go func() {
 		for _, node := range datas {
-			sq.Product(node)
+			_ = sq.Product(node)
 			time.Sleep(time.Millisecond * 200)
 			sig <- struct{}{}
+		}
+	}()
+	var seqCh = make(chan uint32, 1024)
+	go func() {
+		select {
+		case seq := <-seqCh:
+			fmt.Println(seq)
 		}
 	}()
 	for {
 		select {
 		case <-sig:
-			var buf = sq.Consume()
+			var buf = sq.Consume(seqCh)
 			if buf == nil {
 				continue
 			}
