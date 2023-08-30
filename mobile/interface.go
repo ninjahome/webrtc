@@ -30,7 +30,7 @@ var (
 func StartVideo(cb CallBack) error {
 	initSdk(cb)
 
-	var peerConnection, err = CreateCallerIceConn(_inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
+	var peerConnection, err = CreateCallerIceConn(CallTypeVideo, _inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 
 	initSdk(cb)
 
-	var peerConnection, err = CreateCalleeIceConn(offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
+	var peerConnection, err = CreateCalleeIceConn(CallTypeVideo, offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func SendVideoToPeer(data []byte) error {
 		fmt.Println("======>>>no key frame yet")
 		return nil
 	}
-	//fmt.Println("======>>>send from app:", len(rawData))
+	//fmt.Println("======>>>send camera data from app:", len(rawData))
 	_inst.localVideoPacket <- rawData
 	return nil
 }

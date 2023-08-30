@@ -6,6 +6,7 @@ import (
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
+	"sync"
 	"time"
 )
 
@@ -14,117 +15,247 @@ const (
 	StunUrlStr = "stun:stun.l.google.com:19302"
 )
 
+const (
+	AgentTypAudio AgentType = iota
+	AgentTypeVideoOne
+	AgentTypeVideoTwo
+	AgentTypMax
+)
+const (
+	CallTypeAudio CallType = iota + 1
+	CallTypeVideo
+)
+
+var (
+	timeOut    = ICETimeOut
+	stunUrl, _ = stun.ParseURI(StunUrlStr)
+	iceConfig  = &ice.AgentConfig{
+		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
+		Urls:          []*stun.URI{stunUrl},
+		FailedTimeout: &timeOut,
+	}
+)
+
+type CallType byte
+type AgentType byte
+
+func (t AgentType) String() string {
+	switch t {
+	case AgentTypAudio:
+		return "audio"
+	case AgentTypeVideoOne:
+		return "video1"
+	case AgentTypeVideoTwo:
+		return "video2"
+	default:
+		return "unknown ice agent type"
+	}
+}
+
+type IceSdp [AgentTypMax]*IceConnParam
+
 type IceConnParam struct {
 	Candidates []string `json:"candidates"`
 	Frag       string   `json:"frag"`
 	Pwd        string   `json:"pwd"`
 }
+
 type OnConnected func(*ice.Conn)
 
 type NinjaIceConn struct {
-	callback    ConnectCallBack
-	agent       *ice.Agent
-	status      ice.ConnectionState
-	iceContext  context.Context
-	iceCancel   context.CancelFunc
-	isOffer     bool
-	onConnected OnConnected
-	inCache     chan []byte
+	callback ConnectCallBack
+
+	agent    [AgentTypMax]*ice.Agent
+	status   [AgentTypMax]ice.ConnectionState
+	isCaller bool
+	callTyp  CallType
+
+	inVideoCache  chan []byte
+	inAudioCache  chan []byte
+	videoConnPair [2]*ice.Conn
 }
 
 func (nic *NinjaIceConn) createParam() (string, error) {
-	var localFrag, localPwd, errUC = nic.agent.GetLocalUserCredentials()
-	if errUC != nil {
-		return "", errUC
-	}
-	var param = &IceConnParam{
-		Frag: localFrag,
-		Pwd:  localPwd,
-	}
-	var err = nic.agent.OnCandidate(func(candidate ice.Candidate) {
-		if candidate == nil {
-			fmt.Println("======>>>candidate finding finished")
-			nic.iceCancel()
-			return
+
+	var errCh []error
+	var sdp IceSdp
+	var wg sync.WaitGroup
+
+	for i, a := range nic.agent {
+		if a == nil {
+			continue
 		}
-		var c = candidate.Marshal()
-		fmt.Println("======>>>candidate found:", c)
-		param.Candidates = append(param.Candidates, c)
-	})
-	if err != nil {
-		return "", err
+		var agent = a
+		var idx = i
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			var localFrag, localPwd, errUC = agent.GetLocalUserCredentials()
+			if errUC != nil {
+				errCh = append(errCh, errUC)
+				return
+			}
+			var param = &IceConnParam{
+				Frag: localFrag,
+				Pwd:  localPwd,
+			}
+
+			var iceContext, iceCancel = context.WithCancel(context.TODO())
+			var err = agent.OnCandidate(func(candidate ice.Candidate) {
+				if candidate == nil {
+					fmt.Println("======>>>candidate finding finished:", AgentType(idx).String())
+					iceCancel()
+					return
+				}
+				var c = candidate.Marshal()
+				fmt.Println("======>>>candidate found:", AgentType(idx).String(), c)
+				param.Candidates = append(param.Candidates, c)
+			})
+			if err != nil {
+				errCh = append(errCh, err)
+				return
+			}
+			err = agent.GatherCandidates()
+			if err != nil {
+				errCh = append(errCh, err)
+				return
+			}
+
+			<-iceContext.Done()
+			sdp[idx] = param
+		}()
 	}
-	err = nic.agent.GatherCandidates()
+	wg.Wait()
+
+	var err = utils.FormatErr(errCh)
 	if err != nil {
 		return "", err
 	}
 
-	<-nic.iceContext.Done()
-	var pStr, errEn = utils.Encode(param)
+	var pStr, errEn = utils.Encode(sdp)
 	if errEn != nil {
 		return "", errEn
 	}
 	return pStr, nil
 }
+
 func (nic *NinjaIceConn) IsConnected() bool {
-	return nic.status == ice.ConnectionStateConnected
+
+	if nic.callTyp == CallTypeAudio {
+		return nic.status[AgentTypAudio] == ice.ConnectionStateConnected
+	}
+
+	return nic.status[AgentTypAudio] == ice.ConnectionStateConnected &&
+		nic.status[AgentTypeVideoOne] == ice.ConnectionStateConnected &&
+		nic.status[AgentTypeVideoTwo] == ice.ConnectionStateConnected
 }
 
 func (nic *NinjaIceConn) Close() {
-	if nic.inCache == nil {
+	if nic.inVideoCache == nil {
 		return
 	}
-	nic.iceCancel()
-	_ = nic.agent.Close()
-	close(nic.inCache)
-	nic.inCache = nil
-	nic.agent = nil
+
+	for _, agent := range nic.agent {
+		if agent == nil {
+			continue
+		}
+		_ = agent.Close()
+	}
+
+	close(nic.inVideoCache)
+	close(nic.inAudioCache)
+
+	nic.inAudioCache = nil
+	nic.inVideoCache = nil
 }
 
 func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
-	var param = &IceConnParam{}
-	var err = utils.Decode(offer, param)
+	var param IceSdp
+	var err = utils.Decode(offer, &param)
 	if err != nil {
 		return err
 	}
-	//fmt.Println("======>>>offer got:", param)
-	if len(param.Candidates) == 0 {
-		return fmt.Errorf("no valid candidate")
-	}
+	fmt.Println("======>>>offer got:", param)
+	var conns [AgentTypMax]*ice.Conn
+	for i, param := range param {
+		var agent = nic.agent[i]
+		var aTyp = AgentType(i)
 
-	for _, candidate := range param.Candidates {
-		var can, err = ice.UnmarshalCandidate(candidate)
+		if agent == nil {
+			return fmt.Errorf("%s agent should not be nil", aTyp.String())
+		}
+
+		if len(param.Candidates) == 0 {
+			return fmt.Errorf("no valid candidate for %s", aTyp.String())
+		}
+
+		for _, candidate := range param.Candidates {
+			var can, err = ice.UnmarshalCandidate(candidate)
+			if err != nil {
+				return err
+			}
+			err = agent.AddRemoteCandidate(can)
+			if err != nil {
+				return err
+			}
+		}
+
+		var conn *ice.Conn
+		if nic.isCaller {
+			conn, err = agent.Dial(context.TODO(), param.Frag, param.Pwd)
+		} else {
+			conn, err = agent.Accept(context.TODO(), param.Frag, param.Pwd)
+		}
 		if err != nil {
 			return err
 		}
-		err = nic.agent.AddRemoteCandidate(can)
-		if err != nil {
-			return err
-		}
+		conns[i] = conn
+		fmt.Println("======>>> connected for ", aTyp.String())
 	}
-
-	var conn *ice.Conn
-	if nic.isOffer {
-		conn, err = nic.agent.Dial(context.TODO(), param.Frag, param.Pwd)
-	} else {
-		conn, err = nic.agent.Accept(context.TODO(), param.Frag, param.Pwd)
-	}
-	if err != nil {
-		return err
-	}
-	nic.onConnected(conn)
+	nic.OnConnected(conns)
 	return nil
 }
 
-func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
-	var qcConn = NewQueueConn(conn)
-	go nic.writeVideoToRemote(qcConn)
-	go nic.readVideoFromRemote(qcConn)
-	go nic.writeDataToApp()
+func (nic *NinjaIceConn) OnConnected(conn [AgentTypMax]*ice.Conn) {
+
+	var qcConn = NewQueueConn(conn[AgentTypAudio])
+	go nic.writingAudioToRemote(qcConn)
+	go nic.readingAudioFromRemote(qcConn)
+	go nic.writeAudioDataToApp()
+
+	if nic.callTyp == CallTypeAudio {
+		return
+	}
+
+	var v1Conn, v2Conn = NewQueueConn(conn[AgentTypeVideoOne]), NewQueueConn(conn[AgentTypeVideoTwo])
+
+	if nic.isCaller {
+		go nic.writeVideoToRemote(QCDataVideoOne, v1Conn)
+		go nic.readVideoFromRemote(v2Conn)
+	} else {
+		go nic.writeVideoToRemote(QCDataVideoTwo, v2Conn)
+		go nic.readVideoFromRemote(v1Conn)
+	}
+	go nic.writeVideoDataToApp()
 }
 
-func (nic *NinjaIceConn) writeVideoToRemote(conn *QueueConn) {
-	var err = conn.WritingFrame(QCDataVideo, nic.callback.RawCameraData)
+func (nic *NinjaIceConn) writingAudioToRemote(conn *QueueConn) {
+
+}
+
+func (nic *NinjaIceConn) readingAudioFromRemote(conn *QueueConn) {
+
+}
+
+func (nic *NinjaIceConn) writeVideoToRemote(dType QCDataTye, conn *QueueConn) {
+	var errCh = make(chan error, 2)
+
+	go conn.readingLostSeq(errCh)
+	go conn.WritingFrame(dType, nic.callback.RawCameraData, errCh)
+
+	var err = <-errCh
 	if err != nil {
 		nic.callback.EndCall(err)
 		conn.Close()
@@ -134,7 +265,7 @@ func (nic *NinjaIceConn) writeVideoToRemote(conn *QueueConn) {
 }
 
 func (nic *NinjaIceConn) readVideoFromRemote(conn *QueueConn) {
-	var err = conn.ReadFrameData(nic.inCache)
+	var err = conn.ReadFrameData(nic.inVideoCache)
 	if err != nil {
 		nic.callback.EndCall(err)
 		conn.Close()
@@ -142,16 +273,18 @@ func (nic *NinjaIceConn) readVideoFromRemote(conn *QueueConn) {
 	}
 	return
 }
+func (nic *NinjaIceConn) writeAudioDataToApp() {
+}
 
-func (nic *NinjaIceConn) writeDataToApp() {
+func (nic *NinjaIceConn) writeVideoDataToApp() {
 	for {
-		var data, ok = <-nic.inCache
+		var data, ok = <-nic.inVideoCache
 		if !ok {
 			nic.Close()
 			nic.callback.EndCall(fmt.Errorf("data stream closed"))
 			return
 		}
-		//fmt.Println("======>>>data from remote :", len(data)) //,hex.EncodeToString(data))
+		//fmt.Println("======>>>data from remote:", len(data), hex.EncodeToString(data))
 		var _, err = nic.callback.GotVideoData(data)
 		if err != nil {
 			nic.callback.EndCall(err)
@@ -161,34 +294,16 @@ func (nic *NinjaIceConn) writeDataToApp() {
 	}
 }
 
-func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
-	var timeOut = ICETimeOut
-	var stunUrl, _ = stun.ParseURI(StunUrlStr)
-	var iceConfig = &ice.AgentConfig{
-		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6},
-		Urls:          []*stun.URI{stunUrl},
-		FailedTimeout: &timeOut,
-	}
-	var iceCtx, iceCancel = context.WithCancel(context.TODO())
-	var nic = &NinjaIceConn{
-		status:     ice.ConnectionStateNew,
-		callback:   back,
-		iceContext: iceCtx,
-		iceCancel:  iceCancel,
-		inCache:    make(chan []byte, MaxInBufferSize),
-	}
-
-	nic.onConnected = nic.iceConnectionOn
-
+func (nic *NinjaIceConn) createAgent(aTyp AgentType, back ConnectCallBack) (*ice.Agent, error) {
 	var iceAgent, err = ice.NewAgent(iceConfig)
 	if err != nil {
 		return nil, err
 	}
-	nic.agent = iceAgent
 
 	err = iceAgent.OnConnectionStateChange(func(state ice.ConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", state.String())
-		nic.status = state
+		fmt.Printf("ICE Connection[%s] State has changed: %s\n",
+			aTyp.String(), state.String())
+		nic.status[aTyp] = state
 		if state == ice.ConnectionStateFailed {
 			back.EndCall(fmt.Errorf("ice connection failed"))
 			return
@@ -198,15 +313,49 @@ func createBasicIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
 		return nil, err
 	}
 
-	return nic, nil
+	return iceAgent, nil
 }
 
-func CreateCallerIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
-	var nic, err = createBasicIceConn(back)
+func createBasicIceConn(callTyp CallType, back ConnectCallBack) (*NinjaIceConn, error) {
+
+	var nic = &NinjaIceConn{
+		callback:     back,
+		callTyp:      callTyp,
+		inVideoCache: make(chan []byte, MaxInBufferSize),
+		inAudioCache: make(chan []byte, MaxInBufferSize),
+	}
+
+	var agent, err = nic.createAgent(AgentTypAudio, back)
 	if err != nil {
 		return nil, err
 	}
-	nic.isOffer = true
+	nic.agent[AgentTypAudio] = agent
+
+	if callTyp == CallTypeAudio {
+		return nic, nil
+	}
+
+	agent, err = nic.createAgent(AgentTypeVideoOne, back)
+	if err != nil {
+		return nil, err
+	}
+	nic.agent[AgentTypeVideoOne] = agent
+
+	agent, err = nic.createAgent(AgentTypeVideoTwo, back)
+	if err != nil {
+		return nil, err
+	}
+	nic.agent[AgentTypeVideoTwo] = agent
+
+	return nic, nil
+}
+
+func CreateCallerIceConn(callTyp CallType, back ConnectCallBack) (*NinjaIceConn, error) {
+	var nic, err = createBasicIceConn(callTyp, back)
+	if err != nil {
+		return nil, err
+	}
+	nic.isCaller = true
 
 	var offer, errOff = nic.createParam()
 	if errOff != nil {
@@ -217,12 +366,12 @@ func CreateCallerIceConn(back ConnectCallBack) (*NinjaIceConn, error) {
 	return nic, nil
 }
 
-func CreateCalleeIceConn(offer string, back ConnectCallBack) (*NinjaIceConn, error) {
-	var nic, err = createBasicIceConn(back)
+func CreateCalleeIceConn(callTyp CallType, offer string, back ConnectCallBack) (*NinjaIceConn, error) {
+	var nic, err = createBasicIceConn(callTyp, back)
 	if err != nil {
 		return nil, err
 	}
-	nic.isOffer = false
+	nic.isCaller = false
 
 	var answer, errOff = nic.createParam()
 	if errOff != nil {

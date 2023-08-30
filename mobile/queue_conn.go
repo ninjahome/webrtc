@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -11,10 +12,10 @@ import (
 )
 
 const (
-	QCDataVideo QCDataTye = iota + 1
+	QCDataVideoOne QCDataTye = iota + 1
+	QCDataVideoTwo
 	QCDataAudio
 	QCDataNack
-	QCDataResend
 )
 
 const (
@@ -36,6 +37,7 @@ var (
 	QCErrDataLost    = fmt.Errorf("data lost")
 	QCErrHeaderLost  = fmt.Errorf("header lost")
 	QCErrAckLost     = fmt.Errorf("ack lost")
+	QCErrCacheLost   = fmt.Errorf("cache lost")
 	QCErrDataInvalid = fmt.Errorf("data type unknown")
 )
 
@@ -43,8 +45,10 @@ type QCDataTye byte
 
 func (t QCDataTye) String() string {
 	switch t {
-	case QCDataVideo:
-		return "video"
+	case QCDataVideoOne:
+		return "video1"
+	case QCDataVideoTwo:
+		return "video2"
 	case QCDataAudio:
 		return "audio"
 	case QCDataNack:
@@ -123,25 +127,42 @@ func (qc *QueueConn) sendWithSeqAndTyp(typ QCDataTye, buf []byte) error {
 			fmt.Println("\t\t\t\t\t\t\t\t\t\t\t\t======>>>qc write err:", n, hex.EncodeToString(headBuf), hex.EncodeToString(data), sliceLen, QCHeaderSize)
 			return QCErrDataLost
 		}
-		fmt.Println("\t\t\t\t\t\t\t\t\t\t\t\t======>>>qc write=> seq:", qc.seq,
-			" slice size:", sliceLen, " cache idx:", ackIdx,
-			" data len:", len(qc.sendCache[ackIdx]))
+		fmt.Println("\t\t\t\t\t\t\t\t\t\t\t\t======>>>qc write=> seq:",
+			qc.seq, " Typ:", typ.String(),
+			" slice size:", sliceLen, " cache idx:", ackIdx)
+		//,			" data len:", len(qc.sendCache[ackIdx]))
 	}
 
 	return nil
 }
 
-func (qc *QueueConn) WritingFrame(typ QCDataTye, dataSource func() ([]byte, error)) error {
-	var errCh = make(chan error, 2)
+func (qc *QueueConn) readingLostSeq(errCh chan error) {
+	for {
+		var node, err = qc.readDataNodeFromPeer()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		err = qc.resendLostPkt(node)
+		if err != nil {
+			if errors.Is(err, QCErrCacheLost) {
+				continue
+			}
+			errCh <- err
+			return
+		}
+	}
+}
+
+func (qc *QueueConn) WritingFrame(typ QCDataTye, dataSource func() ([]byte, error), errCh chan error) {
 
 	for {
 		select {
-		case er := <-errCh:
-			return er
 		case lostData := <-qc.rendBuf:
 			var _, errW = qc.conn.Write(lostData)
 			if errW != nil {
-				return errW
+				errCh <- errW
+				return
 			}
 			continue
 		default:
@@ -149,16 +170,19 @@ func (qc *QueueConn) WritingFrame(typ QCDataTye, dataSource func() ([]byte, erro
 
 		var buf, err = dataSource()
 		if err != nil {
-			return err
+			errCh <- err
+			return
 		}
+		//fmt.Println("======>>> device data", hex.EncodeToString(buf))
 		err = qc.sendWithSeqAndTyp(typ, buf)
 		if err != nil {
-			return err
+			errCh <- err
+			return
 		}
 	}
 }
 
-func (qc *QueueConn) readFromNetwork() (*DataNode, error) {
+func (qc *QueueConn) readDataNodeFromPeer() (*DataNode, error) {
 
 	var buffer = make([]byte, QCIceMtu)
 	var n, err = qc.conn.Read(buffer)
@@ -177,34 +201,33 @@ func (qc *QueueConn) readFromNetwork() (*DataNode, error) {
 	var node = &DataNode{}
 
 	switch dataTyp {
-	case QCDataAudio:
-		panic("audio is in progress")
 	case QCDataNack:
 		node.Typ = QCDataNack
 		node.Buf = buffer
 
-	case QCDataVideo:
-
-		node.Typ = QCDataVideo
+	case QCDataVideoOne, QCDataVideoTwo:
+		node.Typ = dataTyp
 		node.Buf = buffer
 		node.Seq = seq
 
 		var videoStartIdx = bytes.Index(buffer[:VideoAvcLen], VideoAvcStart)
 		node.IsKey = videoStartIdx == 0
-
+	case QCDataAudio:
+		node.Typ = dataTyp
+		node.Buf = buffer
+		node.Seq = seq
 	default:
 		return nil, QCErrDataInvalid
 	}
 
-	fmt.Println("******>>>qc read node:", node.String()) //, hex.EncodeToString(node.Buf))
+	fmt.Println("******>>>qc read node:", node.String())
 	return node, nil
 }
 
-func (qc *QueueConn) resendLostPkt(errCh chan error, node *DataNode) {
+func (qc *QueueConn) resendLostPkt(node *DataNode) error {
 	var dataLen = len(node.Buf)
 	if dataLen != QCSequenceLen {
-		errCh <- QCErrAckLost
-		return
+		return QCErrAckLost
 	}
 
 	var ackIdx = binary.BigEndian.Uint32(node.Buf)
@@ -214,31 +237,25 @@ func (qc *QueueConn) resendLostPkt(errCh chan error, node *DataNode) {
 	if buf == nil {
 		fmt.Println("\t\t\t\t\t\t\t\t\t\t\t\t&&&&&&&&&&&&&&&&&&&&&>>>"+
 			" lost payload not found:", idxInCache, ackIdx, qc.seq)
-		return
+		return QCErrCacheLost
 	}
 
 	fmt.Println("\t\t\t\t\t\t\t\t\t\t\t\t&&&&&&&&&&&&&&&&&&&&&>>>resending lost pkt seq:", ackIdx)
 
 	qc.rendBuf <- buf
+	return nil
 }
 
 func (qc *QueueConn) reading(sig chan struct{}, eCh chan error) {
 	for {
-		var node, err = qc.readFromNetwork()
+		var node, err = qc.readDataNodeFromPeer()
 		if err != nil {
 			eCh <- err
 			return
 		}
-		if node.Typ == QCDataVideo {
-			_ = qc.rcvPool.Product(node)
-			sig <- struct{}{}
-			continue
-		}
-		if node.Typ == QCDataNack {
-			qc.resendLostPkt(eCh, node)
-			continue
-		}
-		panic("audio in process")
+		_ = qc.rcvPool.Product(node)
+		sig <- struct{}{}
+		continue
 	}
 }
 
@@ -246,6 +263,7 @@ func (qc *QueueConn) ReadFrameData(bufCh chan []byte) error {
 
 	var errCh = make(chan error, 2)
 	var lostSeq = make(chan uint32, QCNodePool)
+
 	go qc.reading(qc.rcvSig, errCh)
 
 	for {
@@ -267,7 +285,7 @@ func (qc *QueueConn) ReadFrameData(bufCh chan []byte) error {
 			if buf == nil {
 				continue
 			}
-			fmt.Println("******>>>got remote data:", len(buf))
+			//fmt.Println("******>>>got remote data:", hex.EncodeToString(buf))
 			bufCh <- buf
 		case e := <-errCh:
 			return e

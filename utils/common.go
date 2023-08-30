@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -77,4 +78,17 @@ func Encode(obj interface{}) (string, error) {
 	}
 
 	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+func FormatErr(errs []error) error {
+	if errs == nil {
+		return nil
+	}
+	var err = fmt.Errorf("compose err ")
+
+	for _, e := range errs {
+		err = fmt.Errorf("%s,%s", err, e)
+	}
+
+	return err
 }

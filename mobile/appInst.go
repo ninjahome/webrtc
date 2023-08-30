@@ -64,6 +64,7 @@ func (ai *AppInst) RawCameraData() ([]byte, error) {
 	if !ok {
 		return nil, io.EOF
 	}
+	//fmt.Println("=====>>> app got camera data:", len(pkt))
 	return pkt, nil
 }
 func (ai *AppInst) RawMicroData() ([]byte, error) {
