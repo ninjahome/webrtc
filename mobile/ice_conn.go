@@ -117,28 +117,27 @@ func (nic *NinjaIceConn) SetRemoteDesc(offer string) error {
 }
 
 func (nic *NinjaIceConn) iceConnectionOn(conn *ice.Conn) {
-	go nic.writeVideoToRemote(conn)
-	go nic.readVideoFromRemote(conn)
+	var qcConn = NewQueueConn(conn)
+	go nic.writeVideoToRemote(qcConn)
+	go nic.readVideoFromRemote(qcConn)
 	go nic.writeDataToApp()
 }
 
-func (nic *NinjaIceConn) writeVideoToRemote(conn *ice.Conn) {
-	var qc = NewQueueConn(conn)
-	var err = qc.WritingFrame(QCDataVideo, nic.callback.RawCameraData)
+func (nic *NinjaIceConn) writeVideoToRemote(conn *QueueConn) {
+	var err = conn.WritingFrame(QCDataVideo, nic.callback.RawCameraData)
 	if err != nil {
 		nic.callback.EndCall(err)
-		qc.Close()
+		conn.Close()
 		nic.Close()
 		return
 	}
 }
 
-func (nic *NinjaIceConn) readVideoFromRemote(conn *ice.Conn) {
-	var reader = NewQueueConn(conn)
-	var err = reader.ReadFrameData(nic.inCache)
+func (nic *NinjaIceConn) readVideoFromRemote(conn *QueueConn) {
+	var err = conn.ReadFrameData(nic.inCache)
 	if err != nil {
 		nic.callback.EndCall(err)
-		_ = conn.Close()
+		conn.Close()
 		nic.Close()
 	}
 	return
