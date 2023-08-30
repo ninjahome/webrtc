@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 )
 
@@ -26,7 +25,7 @@ const (
 	QCSequenceLen = 4
 	QCHeaderSize  = QCDataTypeLen + QCSequenceLen
 
-	QCNodePool    = 1 << 12
+	QCNodePool    = 1 << 11
 	QCNullPointer = -1
 
 	QCSliceToWait     = 1 << 3
@@ -66,20 +65,15 @@ type QueueConn struct {
 	sendCache [][]byte
 	rendBuf   chan []byte
 
-	rcvPool *SortedQueue
-	rcvSig  chan struct{}
+	videoQueue *SortedQueue
 }
 
 func NewQueueConn(c net.Conn) *QueueConn {
 	return &QueueConn{
-		conn: c,
-		rcvPool: &SortedQueue{
-			Pointer: QCNullPointer,
-			Pool:    make([]*DataNode, QCNodePool),
-		},
-		rcvSig:    make(chan struct{}, QCNodePool),
-		sendCache: make([][]byte, QCNodePool),
-		rendBuf:   make(chan []byte, QCNodePool),
+		conn:       c,
+		videoQueue: NewSortedQueue(),
+		sendCache:  make([][]byte, QCNodePool),
+		rendBuf:    make(chan []byte, QCNodePool),
 	}
 }
 
@@ -87,10 +81,9 @@ func (qc *QueueConn) Close() {
 	if qc.conn == nil {
 		return
 	}
-	qc.rcvPool.Reset()
+	qc.videoQueue.Reset()
 	qc.seq = 0
 	_ = qc.conn.Close()
-	close(qc.rcvSig)
 	close(qc.rendBuf)
 	qc.conn = nil
 }
@@ -246,15 +239,14 @@ func (qc *QueueConn) resendLostPkt(node *DataNode) error {
 	return nil
 }
 
-func (qc *QueueConn) reading(sig chan struct{}, eCh chan error) {
+func (qc *QueueConn) reading(eCh chan error) {
 	for {
 		var node, err = qc.readDataNodeFromPeer()
 		if err != nil {
 			eCh <- err
 			return
 		}
-		_ = qc.rcvPool.Product(node)
-		sig <- struct{}{}
+		qc.videoQueue.Product(node)
 		continue
 	}
 }
@@ -264,8 +256,8 @@ func (qc *QueueConn) ReadFrameData(bufCh chan []byte) error {
 	var errCh = make(chan error, 2)
 	var lostSeq = make(chan uint32, QCNodePool)
 
-	go qc.reading(qc.rcvSig, errCh)
-
+	go qc.reading(errCh)
+	go qc.videoQueue.Consume(bufCh, lostSeq)
 	for {
 		select {
 		case seq := <-lostSeq:
@@ -280,13 +272,6 @@ func (qc *QueueConn) ReadFrameData(bufCh chan []byte) error {
 			}
 
 			continue
-		case <-qc.rcvSig:
-			var buf = qc.rcvPool.Consume(lostSeq)
-			if buf == nil {
-				continue
-			}
-			//fmt.Println("******>>>got remote data:", hex.EncodeToString(buf))
-			bufCh <- buf
 		case e := <-errCh:
 			return e
 		}
@@ -313,42 +298,48 @@ func (dn *DataNode) isEmpty() bool {
 }
 
 type SortedQueue struct {
-	sync.RWMutex
-	Pointer int
-	Pool    []*DataNode
+	pointer int
+	pool    []*DataNode
+
+	rcvCache chan *DataNode
 
 	lostCounter    int
 	timeoutCounter int
 }
 
-func (dp *SortedQueue) Reset() {
-	dp.Lock()
-	dp.Unlock()
+func NewSortedQueue() *SortedQueue {
+	var sq = &SortedQueue{
+		pointer:  QCNullPointer,
+		pool:     make([]*DataNode, QCNodePool),
+		rcvCache: make(chan *DataNode, QCNodePool),
+	}
+	return sq
+}
 
-	dp.Pool = nil
-	dp.Pointer = QCNullPointer
+func (dp *SortedQueue) Reset() {
+	close(dp.rcvCache)
+	dp.pointer = QCNullPointer
 }
 
 func (dp *SortedQueue) skipToNextFrameWithoutLock() {
 	dp.lostCounter = 0
 	dp.timeoutCounter = 0
 	for i := 2; i < QCNodePool; i++ {
-		var nextPos = (dp.Pointer + i) % QCNodePool
-		var next = dp.Pool[nextPos]
+		var nextPos = (dp.pointer + i) % QCNodePool
+		var next = dp.pool[nextPos]
 		if next == nil {
 			continue
 		}
 		if !next.IsKey {
 			continue
 		}
-		dp.Pointer = nextPos
+		dp.pointer = nextPos
 		fmt.Println("&&&&&&&&&&&&&&&&&&&&&>>> skip to next frame:", next.String())
 		return
 	}
 }
+
 func (dp *SortedQueue) findNext(lostSeq chan uint32, cur *DataNode) {
-	dp.Lock()
-	defer dp.Unlock()
 
 	dp.lostCounter++
 	dp.timeoutCounter++
@@ -368,70 +359,63 @@ func (dp *SortedQueue) findNext(lostSeq chan uint32, cur *DataNode) {
 	}
 }
 
-func (dp *SortedQueue) Consume(lostSeq chan uint32) []byte {
-	dp.RLock()
-	if dp.Pointer == QCNullPointer {
-		//fmt.Println("------>>> empty queue:")
-		dp.RUnlock()
-		return nil
-	}
-	var cur = dp.Pool[dp.Pointer]
-	if cur == nil {
-		//fmt.Println("------>>> empty queue:")
-		dp.RUnlock()
-		return nil
-	}
+func (dp *SortedQueue) Consume(ch chan []byte, lostSeq chan uint32) {
+	for {
+		var newNode = <-dp.rcvCache
+		if newNode == nil {
+			fmt.Println("\t\t\t\t\t\t------>>> Consume finished")
+			return
+		}
+		fmt.Println("\t\t\t\t\t\t------>>> new node:", newNode.String())
+		var pos = int(newNode.Seq % QCNodePool)
+		dp.pool[pos] = newNode
+		if dp.pointer == QCNullPointer && newNode.Seq == 1 {
+			fmt.Println("\t\t\t\t\t\t------>>> found start seq:", newNode.String())
+			dp.pointer = pos
+		}
 
-	var nextPos = (dp.Pointer + 1) % QCNodePool
-	var next = dp.Pool[nextPos]
-	if next == nil {
-		dp.RUnlock()
-		dp.findNext(lostSeq, cur)
-		return nil
-	}
+		if dp.pointer == QCNullPointer {
+			//fmt.Println("------>>> empty queue:")
+			continue
+		}
+		var cur = dp.pool[dp.pointer]
+		if cur == nil {
+			//fmt.Println("------>>> empty queue:")
+			continue
+		}
 
-	dp.RUnlock()
+		var nextPos = (dp.pointer + 1) % QCNodePool
+		var next = dp.pool[nextPos]
+		if next == nil {
+			dp.findNext(lostSeq, cur)
+			continue
+		}
 
-	dp.Lock()
-	defer dp.Unlock()
-	if !next.IsKey {
-		fmt.Println("\t\t\t\t\t\t------>>> merge node cur:", cur.String(),
+		if !next.IsKey {
+			fmt.Println("\t\t\t\t\t\t------>>> merge node cur:", cur.String(),
+				" next:", next.String())
+			next.Buf = append(cur.Buf, next.Buf...)
+			next.IsKey = cur.IsKey
+			dp.pool[dp.pointer] = nil
+			dp.pointer = nextPos
+			fmt.Println("\t\t\t\t\t\t------>>> next now:", next.String())
+			continue
+		}
+
+		fmt.Println("\t\t\t\t\t\t--------------------------------------->>> key node", cur.String(),
 			" next:", next.String())
-		next.Buf = append(cur.Buf, next.Buf...)
-		next.IsKey = cur.IsKey
-		dp.Pool[dp.Pointer] = nil
-		dp.Pointer = nextPos
-		fmt.Println("\t\t\t\t\t\t------>>> next now:", next.String())
-		return nil
-	}
+		if !cur.IsKey {
+			dp.skipToNextFrameWithoutLock()
+			continue
+		}
 
-	fmt.Println("\t\t\t\t\t\t--------------------------------------->>> key node", cur.String(),
-		" next:", next.String())
-	if !cur.IsKey {
-		dp.skipToNextFrameWithoutLock()
-		return nil
+		dp.pool[dp.pointer] = nil
+		dp.pointer = nextPos
+		ch <- cur.Buf
+		continue
 	}
-
-	dp.Pool[dp.Pointer] = nil
-	dp.Pointer = nextPos
-	return cur.Buf
 }
 
-func (dp *SortedQueue) Product(node *DataNode) error {
-	if node == nil {
-		return fmt.Errorf("empty data")
-	}
-	dp.Lock()
-	defer dp.Unlock()
-	if dp.Pool == nil {
-		return fmt.Errorf("empty pool")
-	}
-
-	var pos = int(node.Seq % QCNodePool)
-	dp.Pool[pos] = node
-	if dp.Pointer == QCNullPointer && node.Seq == 1 {
-		fmt.Println("\t\t\t\t\t\t------>>> found start seq:", node.String())
-		dp.Pointer = pos
-	}
-	return nil
+func (dp *SortedQueue) Product(node *DataNode) {
+	dp.rcvCache <- node
 }
