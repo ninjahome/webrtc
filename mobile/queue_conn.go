@@ -24,12 +24,11 @@ const (
 	QCSequenceLen = 4
 	QCHeaderSize  = QCDataTypeLen + QCSequenceLen
 
-	QCNodePool    = 1 << 10
+	QCNodePool    = 1 << 12
 	QCNullPointer = -1
 
 	QCSliceToWait     = 1 << 3
 	QCSliceLostToSkip = 1 << 4
-	QCMaxSkipTry      = QCSliceLostToSkip
 )
 
 var (
@@ -93,7 +92,7 @@ func (qc *QueueConn) Close() {
 
 func (qc *QueueConn) sendWithSeqAndTyp(typ QCDataTye, buf []byte) error {
 	var dataLen = len(buf)
-	fmt.Println("======>>>frame data=> type:", typ.String(),
+	fmt.Println("\t\t\t\t\t\t======>>>frame data=> type:", typ.String(),
 		" length:", dataLen) //, hex.EncodeToString(buf))
 
 	for startIdx := 0; startIdx < dataLen; startIdx = startIdx + QCSliceSize {
@@ -120,10 +119,10 @@ func (qc *QueueConn) sendWithSeqAndTyp(typ QCDataTye, buf []byte) error {
 			return errW
 		}
 		if n != sliceLen+QCHeaderSize {
-			fmt.Println("======>>>qc write err:", n, hex.EncodeToString(headBuf), hex.EncodeToString(data), sliceLen, QCHeaderSize)
+			fmt.Println("\t\t\t\t\t\t======>>>qc write err:", n, hex.EncodeToString(headBuf), hex.EncodeToString(data), sliceLen, QCHeaderSize)
 			return QCErrDataLost
 		}
-		fmt.Println("======>>>qc write=> seq:", qc.seq,
+		fmt.Println("\t\t\t\t\t\t======>>>qc write=> seq:", qc.seq,
 			" slice size:", sliceLen,
 			" header:", hex.EncodeToString(headBuf))
 	}
@@ -201,26 +200,25 @@ func (qc *QueueConn) readFromNetwork() (*DataNode, error) {
 }
 
 func (qc *QueueConn) resendLostPkt(errCh chan error, node *DataNode) {
-	for {
-		var dataLen = len(node.Buf)
-		if dataLen != QCSequenceLen {
-			fmt.Println("===+++>>>reading ack lost:", node.String(),
-				hex.EncodeToString(node.Buf))
-			errCh <- QCErrAckLost
-			return
-		}
-
-		var ackIdx = binary.BigEndian.Uint32(node.Buf)
-		var idxInCache = ackIdx % QCNodePool
-
-		var buf = qc.sendCache[idxInCache]
-		if buf == nil {
-			fmt.Println("======>>> lost pkt payload not found:", ackIdx)
-			continue
-		}
-
-		qc.rendBuf <- buf
+	var dataLen = len(node.Buf)
+	if dataLen != QCSequenceLen {
+		fmt.Println("\t\t\t\t\t\t ======>>>reading ack lost:", node.String(),
+			hex.EncodeToString(node.Buf))
+		errCh <- QCErrAckLost
+		return
 	}
+
+	var ackIdx = binary.BigEndian.Uint32(node.Buf)
+	var idxInCache = ackIdx % QCNodePool
+
+	var buf = qc.sendCache[idxInCache]
+	if buf == nil {
+		fmt.Println("\t\t\t\t\t\t ======>>> lost pkt payload not found:", ackIdx)
+		return
+	}
+	fmt.Println("\t\t\t\t\t\t ======>>>resending lost pkt seq:", ackIdx)
+
+	qc.rendBuf <- buf
 }
 
 func (qc *QueueConn) reading(sig chan struct{}, eCh chan error) {
@@ -342,32 +340,38 @@ func (dp *SortedQueue) Consume(lostSeq chan uint32) []byte {
 		dp.RUnlock()
 		return nil
 	}
-	dp.RUnlock()
-
-	dp.Lock()
-	defer dp.Unlock()
 
 	var nextPos = (dp.Pointer + 1) % QCNodePool
 	var next = dp.Pool[nextPos]
 	if next == nil {
+
+		dp.RUnlock()
+		dp.Lock()
+
 		dp.lostCounter++
 		dp.timeoutCounter++
+
 		fmt.Println("------>>> no next node :", cur.String(),
 			" lost counter:", dp.lostCounter,
 			" timeout counter:", dp.timeoutCounter)
+
+		if dp.lostCounter > QCSliceToWait {
+			if dp.timeoutCounter <= QCSliceLostToSkip {
+				fmt.Println("------>>> found lost seq:", cur.Seq+1)
+				dp.lostCounter = 0
+				lostSeq <- cur.Seq + 1
+			} else {
+				dp.skipToNextFrameWithoutLock()
+			}
+		}
+		dp.Unlock()
 		return nil
 	}
 
-	if dp.lostCounter > QCSliceToWait {
-		if dp.timeoutCounter <= QCSliceLostToSkip {
-			fmt.Println("------>>> found lost seq:", cur.Seq+1)
-			lostSeq <- cur.Seq + 1
-			dp.lostCounter = 0
-		} else {
-			dp.skipToNextFrameWithoutLock()
-		}
-	}
+	dp.RUnlock()
 
+	dp.Lock()
+	defer dp.Unlock()
 	if !next.IsKey {
 		fmt.Println("------>>> merge node cur:", cur.String(),
 			" next:", next.String())

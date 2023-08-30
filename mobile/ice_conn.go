@@ -152,7 +152,7 @@ func (nic *NinjaIceConn) writeDataToApp() {
 			nic.callback.EndCall(fmt.Errorf("data stream closed"))
 			return
 		}
-		fmt.Println("======>>>data from remote :", len(data)) //,hex.EncodeToString(data))
+		//fmt.Println("======>>>data from remote :", len(data)) //,hex.EncodeToString(data))
 		var _, err = nic.callback.GotVideoData(data)
 		if err != nil {
 			nic.callback.EndCall(err)
