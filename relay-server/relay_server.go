@@ -3,6 +3,7 @@ package relay
 import (
 	"fmt"
 	"github.com/ninjahome/webrtc/utils"
+	"github.com/pion/webrtc/v3"
 	"io"
 	"net/http"
 	"sync"
@@ -29,8 +30,10 @@ func (rs *Server) StartSrv() {
 	http.HandleFunc("/sdp", func(w http.ResponseWriter, r *http.Request) {
 		var s = &NinjaSdp{}
 		body, _ := io.ReadAll(r.Body)
+
 		if err := utils.Decode(string(body), s); err != nil {
-			panic(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		var a, err = rs.prepareSession(s)
@@ -50,7 +53,10 @@ func (rs *Server) StartSrv() {
 		_, _ = w.Write([]byte(str))
 	})
 
-	go func() { panic(http.ListenAndServe(":50000", nil)) }()
+	go func() {
+		fmt.Println("relay server start success!!!")
+		panic(http.ListenAndServe(":50000", nil))
+	}()
 }
 
 func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
@@ -61,34 +67,39 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 
 	case STCallerOffer:
 		var sdpErr error
+		var sdpA *webrtc.SessionDescription
 		var tunnel, ok = rs.cache[sdp.SID]
 		if ok {
+			fmt.Println("old session exit:", sdp.SID)
 			tunnel.Close()
 		}
 
-		tunnel, sdpErr = NewTunnel(sdp, rs.CloseTunnel)
+		tunnel, sdpA, sdpErr = NewTunnel(sdp, rs.CloseTunnel)
 		if sdpErr != nil {
+			fmt.Println("create new tunnel err:", sdpErr)
 			return nil, sdpErr
 		}
 
 		rs.cache[sdp.SID] = tunnel
-		var sdpA = tunnel.CallerAnswerSdp()
 		var answer = &NinjaSdp{
 			Typ: STAnswerToCaller,
 			SID: sdp.SID,
 			SDP: sdpA,
 		}
 
+		fmt.Println("create new tunnel success:", answer.String())
 		return answer, nil
 
 	case STCalleeOffer:
 		var tunnel, ok = rs.cache[sdp.SID]
 		if !ok {
+			fmt.Println("can't find caller's session:", sdp.SID)
 			return nil, fmt.Errorf("no caller tunnel")
 		}
 
-		var sdpA, err = tunnel.UpdateCalleeSdp(sdp)
+		var sdpA, err = tunnel.UpdateTunnel(sdp)
 		if err != nil {
+			fmt.Println("update callee  sdp err:", err)
 			rs.CloseTunnel(sdp.SID)
 			return nil, err
 		}
@@ -97,7 +108,7 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 			SID: sdp.SID,
 			SDP: sdpA,
 		}
-
+		fmt.Println("update tunnel for callee success:", answer.String())
 		return answer, nil
 	}
 
@@ -105,6 +116,7 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 }
 
 func (rs *Server) CloseTunnel(tid string) {
+	fmt.Println("tunnel closing:", tid)
 	rs.cacheLocker.Lock()
 	defer rs.cacheLocker.Unlock()
 	var t, ok = rs.cache[tid]

@@ -172,7 +172,7 @@ func (nc *NinjaRtpConn) createAnswerForCaller() (string, error) {
 	return answerStr, nil
 }
 
-func (nc *NinjaRtpConn) createOfferForCallee() (string, error) {
+func (nc *NinjaRtpConn) createOfferForRelay(typ relay.SdpTyp) (string, error) {
 	fmt.Println("======>>>creating offer for callee")
 
 	var offer, errOffer = nc.conn.CreateOffer(nil)
@@ -187,7 +187,7 @@ func (nc *NinjaRtpConn) createOfferForCallee() (string, error) {
 	<-gatheringWait
 
 	var sdp = &relay.NinjaSdp{
-		Typ: relay.STCallerOffer,
+		Typ: typ,
 		SID: "from-to-ninja-ids", //TODO:: refactor this later
 		SDP: nc.conn.LocalDescription(),
 	}
@@ -314,7 +314,7 @@ func CreateCalleeRtpConn(offerStr string, callback ConnectCallBack) (*NinjaRtpCo
 	return nc, nil
 }
 
-func CreateCallerRtpConn(back ConnectCallBack) (*NinjaRtpConn, error) {
+func CreateCallerRtpConn(typ relay.SdpTyp, back ConnectCallBack) (*NinjaRtpConn, error) {
 	fmt.Println("======>>>start to create calling conn")
 	var nc, errConn = createBasicConn()
 	if errConn != nil {
@@ -323,7 +323,7 @@ func CreateCallerRtpConn(back ConnectCallBack) (*NinjaRtpConn, error) {
 
 	nc.callback = back
 
-	var offer, errOffer = nc.createOfferForCallee()
+	var offer, errOffer = nc.createOfferForRelay(typ)
 	if errOffer != nil {
 		return nil, errOffer
 	}

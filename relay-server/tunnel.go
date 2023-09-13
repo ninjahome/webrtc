@@ -33,9 +33,12 @@ type Tunnel struct {
 	callerConn *Conn
 	calleeConn *Conn
 }
+
 type TunnelCloseCallBack func(string)
 
-func NewTunnel(sdp *NinjaSdp, callback TunnelCloseCallBack) (*Tunnel, error) {
+func NewTunnel(sdp *NinjaSdp, callback TunnelCloseCallBack) (*Tunnel, *webrtc.SessionDescription, error) {
+
+	fmt.Println("creating new tunnel:", sdp.SID)
 
 	var ctx, cancel = context.WithCancel(context.Background())
 
@@ -47,23 +50,27 @@ func NewTunnel(sdp *NinjaSdp, callback TunnelCloseCallBack) (*Tunnel, error) {
 
 		closeDelegate: callback,
 	}
-	var c, err = createBasicConn(sdp.SID)
+	var c, err = newBasicConn(sdp.SID)
 	if err != nil {
-		return nil, err
+		fmt.Println("[NewTunnel] create basic connection err:", err)
+		return nil, nil, err
 	}
 
 	c.conn.OnTrack(t.OnCallerTrack)
 	err = c.createAnswerForOffer(*sdp.SDP)
 	if err != nil {
+		fmt.Println("[NewTunnel] create answer for caller err:", err)
 		c.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	t.callerConn = c
-	return t, nil
+	fmt.Println("create new connection for caller success!")
+	return t, c.answer, nil
 }
 
 func (t *Tunnel) Close() {
+	fmt.Println("tunnel is closing:", t.TID)
 	if t.calleeConn != nil {
 		t.calleeConn.Close()
 
@@ -76,78 +83,106 @@ func (t *Tunnel) Close() {
 	}
 }
 
-func (t *Tunnel) UpdateCalleeSdp(sdp *NinjaSdp) (*webrtc.SessionDescription, error) {
+func (t *Tunnel) UpdateTunnel(sdp *NinjaSdp) (*webrtc.SessionDescription, error) {
 
-	var c, err = createBasicConn(sdp.SID)
+	var c, err = newBasicConn(sdp.SID)
 	if err != nil {
+		fmt.Println("[UpdateTunnel] create connection for callee err:", err)
 		return nil, err
 	}
+
 	c.conn.OnTrack(t.OnCalleeTrack)
 	err = c.createAnswerForOffer(*sdp.SDP)
 	if err != nil {
+		fmt.Println("[UpdateTunnel] create answer for callee err:", err)
 		c.Close()
 		return nil, err
 	}
 	t.calleeConn = c
+	fmt.Println("update tunnel success!")
 	return c.answer, nil
 }
 
-func relayRtp(track *webrtc.TrackRemote, audioTrack *webrtc.TrackLocalStaticRTP, videoTrack *webrtc.TrackLocalStaticRTP) error {
-	var codec = track.Codec()
+func relayRtp(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP) error {
 
-	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
-		if audioTrack == nil {
-			return fmt.Errorf("audio track is nil")
+	if local == nil {
+		return fmt.Errorf("local track is nil")
+	}
+	fmt.Println("start to relay track")
+	for {
+		rtp, _, readErr := remote.ReadRTP()
+		if readErr != nil {
+			fmt.Println("read audio rtp err:", readErr)
+			return readErr
 		}
-		for {
-			rtp, _, readErr := track.ReadRTP()
-			if readErr != nil {
-				fmt.Println("read audio rtp err:", readErr)
-				return readErr
-			}
 
-			if writeErr := audioTrack.WriteRTP(rtp); writeErr != nil {
-				fmt.Println("write  audio rtp err:", writeErr)
-				return writeErr
-			}
-		}
-	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
-		if videoTrack == nil {
-			return fmt.Errorf("video track is nil")
-		}
-		for {
-			rtp, _, readErr := track.ReadRTP()
-			if readErr != nil {
-				fmt.Println("read video rtp err:", readErr)
-				return readErr
-			}
-
-			if writeErr := videoTrack.WriteRTP(rtp); writeErr != nil {
-				fmt.Println("write video rtp err:", writeErr)
-				return writeErr
-			}
+		if writeErr := local.WriteRTP(rtp); writeErr != nil {
+			fmt.Println("write rtp err:", writeErr)
+			return writeErr
 		}
 	}
-	return fmt.Errorf("unknown track codec:%s", codec.MimeType)
 }
 
 func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	defer t.Close()
+
 	<-t.calleeWait.Done()
 
-	if err := relayRtp(track, t.calleeConn.audioTrack, t.calleeConn.videoTrack); err != nil {
-		t.Close()
+	var codec = track.Codec()
+	var local *webrtc.TrackLocalStaticRTP
+	fmt.Println("caller's track success:", track.Codec().MimeType)
+
+	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+		local = t.calleeConn.audioTrack
+	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
+		local = t.calleeConn.videoTrack
+	} else {
+		fmt.Println("unknown codec of track:", codec.MimeType)
+		return
+	}
+
+	var err = relayRtp(track, local)
+	if err != nil {
+		fmt.Println("caller's track failed:", err, track.Codec().MimeType)
 		return
 	}
 }
 
 func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	t.calleeOk()
-	if err := relayRtp(track, t.callerConn.audioTrack, t.callerConn.videoTrack); err != nil {
-		t.Close()
+
+	var codec = track.Codec()
+	var local *webrtc.TrackLocalStaticRTP
+	fmt.Println("callee 's track success", track.Codec().MimeType)
+
+	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+		local = t.callerConn.audioTrack
+	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
+		local = t.callerConn.videoTrack
+	} else {
+		fmt.Println("unknown codec of track:", codec.MimeType)
+		return
+	}
+	var err = relayRtp(track, local)
+	if err != nil {
+		fmt.Println("callee 's track failed:", err, track.Codec().MimeType)
 		return
 	}
 }
 
-func (t *Tunnel) CallerAnswerSdp() *webrtc.SessionDescription {
-	return t.callerConn.answer
+func (t *Tunnel) monitor() {
+	for {
+		select {
+
+		case err := <-t.callerConn.errSig:
+			fmt.Println("tunnel close for caller's connection err:", err)
+			t.Close()
+			return
+
+		case err := <-t.calleeConn.errSig:
+			fmt.Println("tunnel close for callee 's connection err:", err)
+			t.Close()
+			return
+		}
+	}
 }

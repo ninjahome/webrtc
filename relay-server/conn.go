@@ -15,13 +15,13 @@ type Conn struct {
 	videoTrack  *webrtc.TrackLocalStaticRTP
 	videoReader *webrtc.RTPSender
 
-	status chan webrtc.ICEConnectionState
+	status webrtc.ICEConnectionState
 	answer *webrtc.SessionDescription
 
 	errSig chan error
 }
 
-func createBasicConn(sid string) (*Conn, error) {
+func newBasicConn(sid string) (*Conn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
 
 	var videoCodec = codec.NewRTPH264Codec(VideoRate)
@@ -66,28 +66,32 @@ func createBasicConn(sid string) (*Conn, error) {
 		audioReader: audioReader,
 		videoReader: videoReader,
 		videoTrack:  videoTrack,
-		status:      make(chan webrtc.ICEConnectionState, 2),
 		errSig:      make(chan error, 2),
 	}
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		conn.status <- connectionState
+		conn.status = connectionState
+		if connectionState == webrtc.ICEConnectionStateConnected {
+			conn.rtpStart()
+		}
+		if connectionState == webrtc.ICEConnectionStateFailed ||
+			connectionState == webrtc.ICEConnectionStateDisconnected {
+			conn.errSig <- fmt.Errorf("connection finiesh")
+		}
 	})
-
+	fmt.Println("connection create success")
 	return conn, nil
 }
 
 func (c *Conn) Close() {
+	fmt.Println("connection is closing")
 	if c.conn != nil {
 		_ = c.conn.Close()
-	}
-	if c.status != nil {
-		close(c.status)
-		c.status = nil
 	}
 }
 
 func (c *Conn) createAnswerForOffer(offer webrtc.SessionDescription) error {
+	fmt.Println("connection creating answer")
 	if err := c.conn.SetRemoteDescription(offer); err != nil {
 		return err
 	}
@@ -103,38 +107,27 @@ func (c *Conn) createAnswerForOffer(offer webrtc.SessionDescription) error {
 	<-gatherComplete
 
 	c.answer = c.conn.LocalDescription()
+
 	return nil
 }
 
-func (c *Conn) monitor() {
-	defer c.Close()
+func ReadingRtp(reader *webrtc.RTPSender, errCh chan error) {
+	rtcpBuf := make([]byte, 1500)
 	for {
-		select {
-		case err := <-c.errSig:
-			fmt.Println("conn failed:", err)
+		if _, _, rtcpErr := reader.Read(rtcpBuf); rtcpErr != nil {
+			errCh <- rtcpErr
 			return
 		}
 	}
 }
 
-func (c *Conn) audioReadingRtp() {
-
-	rtcpBuf := make([]byte, 1500)
-	for {
-		if _, _, rtcpErr := c.audioReader.Read(rtcpBuf); rtcpErr != nil {
-			c.errSig <- rtcpErr
-			return
-		}
+func (c *Conn) rtpStart() {
+	if c.audioReader != nil {
+		fmt.Println("connection start to read audio rtcp")
+		go ReadingRtp(c.audioReader, c.errSig)
 	}
-}
-
-func (c *Conn) videoReadingRtp() {
-
-	rtcpBuf := make([]byte, 1500)
-	for {
-		if _, _, rtcpErr := c.videoReader.Read(rtcpBuf); rtcpErr != nil {
-			c.errSig <- rtcpErr
-			return
-		}
+	if c.videoReader != nil {
+		fmt.Println("connection start to read video rtcp")
+		go ReadingRtp(c.videoReader, c.errSig)
 	}
 }

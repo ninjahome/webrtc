@@ -3,6 +3,7 @@ package webrtcLib
 import (
 	"bytes"
 	"fmt"
+	"github.com/ninjahome/webrtc/relay-server"
 	"github.com/pion/webrtc/v3"
 	"time"
 )
@@ -27,11 +28,14 @@ var (
 *
 ************************************************************************************************************/
 
-func StartVideo(cb CallBack) error {
+func StartVideo(isCaller bool, cb CallBack) error {
 	initSdk(cb)
 	// CreateCallerIceConn(CallTypeVideo, _inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
-
-	var peerConnection, err = CreateCallerRtpConn(_inst)
+	var typ = relay.STCallerOffer
+	if !isCaller {
+		typ = relay.STCalleeOffer
+	}
+	var peerConnection, err = CreateCallerRtpConn(typ, _inst)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"fmt"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -35,16 +34,9 @@ type NinjaSdp struct {
 	SDP *webrtc.SessionDescription
 }
 
-func setSdp(conn *webrtc.PeerConnection, sdp *webrtc.SessionDescription) error {
-	if conn == nil {
-		fmt.Println("caller connection is nil when set sdp")
-		return fmt.Errorf("caller connection is nil")
-	}
-	var sdpErr = conn.SetRemoteDescription(*sdp)
-	if sdpErr != nil {
-		fmt.Println("set sdp for caller err:", sdpErr)
-		return sdpErr
-	}
-
-	return nil
+func (sdp *NinjaSdp) String() string {
+	var s = "\nsid\t:" + sdp.SID
+	s += "\ntype\t:" + sdp.Typ.String()
+	s += "\nwebrtc sdp\t:" + sdp.SDP.SDP
+	return s
 }
