@@ -31,7 +31,7 @@ func StartVideo(cb CallBack) error {
 	initSdk(cb)
 	// CreateCallerIceConn(CallTypeVideo, _inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
 
-	var peerConnection, err = CreateCallerIceConn(CallTypeVideo, _inst)
+	var peerConnection, err = CreateCallerRtpConn(_inst)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 	initSdk(cb)
 	// CreateCalleeIceConn(CallTypeVideo, offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
 
-	var peerConnection, err = CreateCalleeIceConn(CallTypeVideo, offerStr, _inst)
+	var peerConnection, err = CreateCalleeRtpConn(offerStr, _inst)
 	if err != nil {
 		return err
 	}

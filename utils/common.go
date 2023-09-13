@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 	"io"
 )
 
@@ -91,4 +93,24 @@ func FormatErr(errs []error) error {
 	}
 
 	return err
+}
+
+func SaveToDisk(i media.Writer, track *webrtc.TrackRemote) error {
+	defer func() {
+		if err := i.Close(); err != nil {
+			fmt.Println("close saver err:", err)
+		}
+	}()
+
+	for {
+
+		rtpPacket, _, err := track.ReadRTP()
+		if err != nil {
+			return err
+		}
+		if err := i.WriteRTP(rtpPacket); err != nil {
+			//fmt.Println(err, "\n", rtpPacket.String())
+			return err
+		}
+	}
 }
