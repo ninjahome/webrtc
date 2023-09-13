@@ -3,6 +3,7 @@ package webrtcLib
 import (
 	"context"
 	"fmt"
+	"github.com/ninjahome/webrtc/relay-server"
 	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/rtp"
@@ -125,17 +126,16 @@ func (nc *NinjaRtpConn) Close() {
 }
 
 func (nc *NinjaRtpConn) IsConnected() bool {
-	//fmt.Println("======>>>status:", nc.status)
 	return nc.status == webrtc.PeerConnectionStateConnected
 }
 
 func (nc *NinjaRtpConn) SetRemoteDesc(des string) error {
-	offer := webrtc.SessionDescription{}
+	offer := relay.NinjaSdp{}
 	var errEC = utils.Decode(des, &offer)
 	if errEC != nil {
 		return errEC
 	}
-	var pcErr = nc.conn.SetRemoteDescription(offer)
+	var pcErr = nc.conn.SetRemoteDescription(*offer.SDP)
 	if pcErr != nil {
 		return pcErr
 	}
@@ -157,7 +157,14 @@ func (nc *NinjaRtpConn) createAnswerForCaller() (string, error) {
 	}
 
 	<-gatherComplete
-	var answerStr, err = utils.Encode(*nc.conn.LocalDescription())
+
+	var sdp = &relay.NinjaSdp{
+		Typ: relay.STAnswerToCaller,
+		SID: "from-to-ninja-ids", //TODO:: refactor this later
+		SDP: nc.conn.LocalDescription(),
+	}
+
+	var answerStr, err = utils.Encode(sdp)
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +185,13 @@ func (nc *NinjaRtpConn) createOfferForCallee() (string, error) {
 		return "", err
 	}
 	<-gatheringWait
-	var offerStr, errEN = utils.Encode(nc.conn.LocalDescription())
+
+	var sdp = &relay.NinjaSdp{
+		Typ: relay.STCallerOffer,
+		SID: "from-to-ninja-ids", //TODO:: refactor this later
+		SDP: nc.conn.LocalDescription(),
+	}
+	var offerStr, errEN = utils.Encode(sdp)
 	if errEN != nil {
 		return "", errEN
 	}
