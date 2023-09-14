@@ -122,11 +122,11 @@ func relayRtp(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP) err
 func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	defer t.Close()
 
-	<-t.calleeWait.Done()
-
 	var codec = track.Codec()
 	var local *webrtc.TrackLocalStaticRTP
 	fmt.Println("caller's track success:", track.Codec().MimeType)
+
+	<-t.calleeWait.Done()
 
 	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
 		local = t.calleeConn.audioTrack
@@ -145,11 +145,11 @@ func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 }
 
 func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	t.calleeOk()
 
 	var codec = track.Codec()
 	var local *webrtc.TrackLocalStaticRTP
 	fmt.Println("callee 's track success", track.Codec().MimeType)
+	t.calleeOk()
 
 	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
 		local = t.callerConn.audioTrack
