@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
-	webrtcLib "github.com/ninjahome/webrtc/mobile"
+	conn2 "github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
 	"io"
@@ -39,7 +39,7 @@ func main() {
 		panic(err)
 	}
 	var timeOut = ICETimeOut
-	sig := &webrtcLib.IceConnParam{}
+	sig := &conn2.IceConnParam{}
 	iceAgent, err = ice.NewAgent(&ice.AgentConfig{
 		NetworkTypes:  []ice.NetworkType{ice.NetworkTypeUDP4},
 		Urls:          []*stun.URI{u},
@@ -86,17 +86,17 @@ func main() {
 	fmt.Println(sig)
 	fmt.Println(internal.Encode(sig))
 
-	remoteSig := make(chan *webrtcLib.IceConnParam, 1)
+	remoteSig := make(chan *conn2.IceConnParam, 1)
 	if isControlling {
 		http.HandleFunc("/sdp", func(w http.ResponseWriter, r *http.Request) {
-			s := &webrtcLib.IceConnParam{}
+			s := &conn2.IceConnParam{}
 			body, _ := io.ReadAll(r.Body)
 			internal.Decode(string(body), s)
 			remoteSig <- s
 		})
 		go func() { panic(http.ListenAndServe(*offerAddr, nil)) }()
 	} else {
-		s := &webrtcLib.IceConnParam{}
+		s := &conn2.IceConnParam{}
 		internal.Decode(internal.MustReadStdin(), &s)
 		remoteSig <- s
 	}
@@ -163,7 +163,7 @@ func main() {
 
 	}()
 
-	var reader = webrtcLib.NewQueueConn(conn)
+	var reader = conn2.NewQueueConn(conn)
 	err = reader.ReadFrameData(dataCh)
 
 	//var reader = webrtcLib.NewH264Conn(conn, conn)

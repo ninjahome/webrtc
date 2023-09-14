@@ -28,29 +28,26 @@ type Tunnel struct {
 	calleeWait context.Context
 	calleeOk   context.CancelFunc
 
-	closeDelegate TunnelCloseCallBack
-
 	callerConn *Conn
 	calleeConn *Conn
+
+	errSig chan error
 }
 
-type TunnelCloseCallBack func(string)
-
-func NewTunnel(sdp *NinjaSdp, callback TunnelCloseCallBack) (*Tunnel, *webrtc.SessionDescription, error) {
+func NewTunnel(sdp *NinjaSdp, tidRet chan string) (*Tunnel, *webrtc.SessionDescription, error) {
 
 	fmt.Println("creating new tunnel:", sdp.SID)
 
 	var ctx, cancel = context.WithCancel(context.Background())
 
 	var t = &Tunnel{
-		TID: sdp.SID,
+		TID:    sdp.SID,
+		errSig: make(chan error, 6),
 
 		calleeWait: ctx,
 		calleeOk:   cancel,
-
-		closeDelegate: callback,
 	}
-	var c, err = newBasicConn(sdp.SID)
+	var c, err = newBasicConn(sdp.SID, t.errSig)
 	if err != nil {
 		fmt.Println("[NewTunnel] create basic connection err:", err)
 		return nil, nil, err
@@ -66,6 +63,7 @@ func NewTunnel(sdp *NinjaSdp, callback TunnelCloseCallBack) (*Tunnel, *webrtc.Se
 
 	t.callerConn = c
 	fmt.Println("create new connection for caller success!")
+	go t.monitor(tidRet)
 	return t, c.answer, nil
 }
 
@@ -73,19 +71,17 @@ func (t *Tunnel) Close() {
 	fmt.Println("tunnel is closing:", t.TID)
 	if t.calleeConn != nil {
 		t.calleeConn.Close()
-
+		t.calleeConn = nil
 	}
 	if t.callerConn != nil {
 		t.callerConn.Close()
-	}
-	if t.closeDelegate != nil {
-		t.closeDelegate(t.TID)
+		t.callerConn = nil
 	}
 }
 
 func (t *Tunnel) UpdateTunnel(sdp *NinjaSdp) (*webrtc.SessionDescription, error) {
 
-	var c, err = newBasicConn(sdp.SID)
+	var c, err = newBasicConn(sdp.SID, t.errSig)
 	if err != nil {
 		fmt.Println("[UpdateTunnel] create connection for callee err:", err)
 		return nil, err
@@ -170,19 +166,15 @@ func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 	}
 }
 
-func (t *Tunnel) monitor() {
+func (t *Tunnel) monitor(errTid chan string) {
 	for {
 		select {
-
-		case err := <-t.callerConn.errSig:
-			fmt.Println("tunnel close for caller's connection err:", err)
+		case err := <-t.errSig:
+			fmt.Println("tunnel close by err:", err)
 			t.Close()
+			errTid <- t.TID
 			return
 
-		case err := <-t.calleeConn.errSig:
-			fmt.Println("tunnel close for callee 's connection err:", err)
-			t.Close()
-			return
 		}
 	}
 }

@@ -3,22 +3,9 @@ package webrtcLib
 import (
 	"bytes"
 	"fmt"
+	"github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/ninjahome/webrtc/relay-server"
-	"github.com/pion/webrtc/v3"
 	"time"
-)
-
-var (
-	config = webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{
-					"stun:stun1.l.google.com:19302",
-					"stun:stun2.l.google.com:19302",
-				},
-			},
-		},
-	}
 )
 
 /************************************************************************************************************
@@ -35,7 +22,7 @@ func StartVideo(isCaller bool, cb CallBack) error {
 	if !isCaller {
 		typ = relay.STCalleeOffer
 	}
-	var peerConnection, err = CreateCallerRtpConn(typ, _inst)
+	var peerConnection, err = conn.CreateCallerRtpConn(typ, _inst)
 	if err != nil {
 		return err
 	}
@@ -52,7 +39,7 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 	initSdk(cb)
 	// CreateCalleeIceConn(CallTypeVideo, offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
 
-	var peerConnection, err = CreateCalleeRtpConn(offerStr, _inst)
+	var peerConnection, err = conn.CreateCalleeRtpConn(offerStr, _inst)
 	if err != nil {
 		return err
 	}
@@ -85,12 +72,13 @@ func SendVideoToPeer(data []byte) error {
 	copy(rawData, data)
 
 	if !foundKeyFrame {
-		var idx = bytes.Index(rawData, VideoAvcStart)
+		var idx = bytes.Index(rawData, conn.VideoAvcStart)
 		if idx < 0 {
 			return nil
 		}
 		//fmt.Println("======>>>rawData:", rawData[idx+sCodeLen], hex.EncodeToString(rawData))
-		if rawData[idx+VideoAvcLen]&H264TypMask == 7 || rawData[idx+VideoAvcLen]&H264TypMask == 8 {
+		if rawData[idx+conn.VideoAvcLen]&conn.H264TypMask == 7 ||
+			rawData[idx+conn.VideoAvcLen]&conn.H264TypMask == 8 {
 			foundKeyFrame = true
 			fmt.Println("======>>> found key frame")
 		}
@@ -122,29 +110,29 @@ func SetAnswerForOffer(answer string) {
 
 func TestFileData(cb CallBack, data []byte) {
 
-	var startIdx = bytes.Index(data, VideoAvcStart)
+	var startIdx = bytes.Index(data, conn.VideoAvcStart)
 	if startIdx != 0 {
 		fmt.Println("======>>> invalid h264 stream")
 		return
 	}
 	sleepTime := time.Millisecond * time.Duration(33)
-	data = data[VideoAvcLen:]
+	data = data[conn.VideoAvcLen:]
 	for {
-		var typ = int(data[0] & H264TypMask)
+		var typ = int(data[0] & conn.H264TypMask)
 		if typ == 7 || typ == 8 {
-			startIdx = bytes.Index(data, VideoAvcStart)
+			startIdx = bytes.Index(data, conn.VideoAvcStart)
 			if startIdx < 0 {
 				fmt.Println("======>>> find sps or pps err")
 				return
 			}
 			var spsOrPssData = data[0:startIdx]
 			cb.NewVideoData(typ, spsOrPssData)
-			data = data[startIdx+VideoAvcLen:]
+			data = data[startIdx+conn.VideoAvcLen:]
 			continue
 
 		}
 		if typ > 0 {
-			startIdx = bytes.Index(data, VideoAvcStart)
+			startIdx = bytes.Index(data, conn.VideoAvcStart)
 			if startIdx < 0 {
 				fmt.Println("======>>> found last frame")
 				cb.NewVideoData(typ, data)
@@ -154,7 +142,7 @@ func TestFileData(cb CallBack, data []byte) {
 			cb.NewVideoData(typ, vdata)
 			time.Sleep(sleepTime)
 
-			data = data[startIdx+VideoAvcLen:]
+			data = data[startIdx+conn.VideoAvcLen:]
 			continue
 		}
 

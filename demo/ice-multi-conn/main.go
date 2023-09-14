@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
-	webrtcLib "github.com/ninjahome/webrtc/mobile"
+	webrtcLib "github.com/ninjahome/webrtc/mobile/conn"
 	"io"
 	"net/http"
 	"os"

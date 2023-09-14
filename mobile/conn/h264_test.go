@@ -1,4 +1,4 @@
-package webrtcLib
+package conn
 
 import (
 	"bytes"
@@ -86,21 +86,21 @@ func TestReader(t *testing.T) {
 	var str = `000000016742c028da0280f684000003000400000300ca3c60ca800000000168ce3c80`
 	var bts, _ = hex.DecodeString(str)
 
-	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+	_, _ = H254Write(bts, func(typ int, h264data []byte) {
 		fmt.Println(typ, hex.EncodeToString(h264data))
 	})
 
 	str = `00000001658882017a0c6002ae1600b599200d00014416c02a627d57b4d7e4d05c78a51880b1184022d3808f074310f3be83e2e366a4183ed8f92a12174c205e1c600021850e10000850c6794f2de5bc0d904025d929183861403700580595500b0121cc`
 	bts, _ = hex.DecodeString(str)
 
-	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+	_, _ = H254Write(bts, func(typ int, h264data []byte) {
 		fmt.Println(typ, hex.EncodeToString(h264data))
 	})
 
 	str = `00000001410192688042bc562c74324b491f84a77e77b76ad784b37b74db6fde5afc277d37bfc94865e88a17822b2347237cb9de89eef08595a3499e9236d0efe4d8e395f8ba2619a5cef3ba8fc75898988eb9d85b73a506f60ec319f086a6b67aa57f84`
 	bts, _ = hex.DecodeString(str)
 
-	_, _ = h254Write(bts, func(typ int, h264data []byte) {
+	_, _ = H254Write(bts, func(typ int, h264data []byte) {
 		fmt.Println(typ, hex.EncodeToString(h264data))
 	})
 
@@ -149,10 +149,4 @@ func TestConnection(t *testing.T) {
 	}
 	fmt.Println("========>?>>>success")
 	select {}
-}
-func TestPoolSize(t *testing.T) {
-	var buf = make([]byte, QCSequenceLen)
-	buf[3] = 11
-	buf = append(buf, byte(QCDataVideo))
-	fmt.Println(hex.EncodeToString(buf))
 }

@@ -16,11 +16,13 @@ const (
 type Server struct {
 	cacheLocker sync.RWMutex
 	cache       map[string]*Tunnel
+	tidErr      chan string
 }
 
 func NewServer() *Server {
 	var rs = &Server{
-		cache: make(map[string]*Tunnel, MaxTunnelNum),
+		cache:  make(map[string]*Tunnel, MaxTunnelNum),
+		tidErr: make(chan string, MaxTunnelNum),
 	}
 	return rs
 }
@@ -51,6 +53,10 @@ func (rs *Server) StartSrv() {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(str))
+
+		fmt.Println()
+		fmt.Println(str)
+		fmt.Println()
 	})
 
 	go func() {
@@ -74,7 +80,7 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 			tunnel.Close()
 		}
 
-		tunnel, sdpA, sdpErr = NewTunnel(sdp, rs.CloseTunnel)
+		tunnel, sdpA, sdpErr = NewTunnel(sdp, rs.tidErr)
 		if sdpErr != nil {
 			fmt.Println("create new tunnel err:", sdpErr)
 			return nil, sdpErr
@@ -116,13 +122,26 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 }
 
 func (rs *Server) CloseTunnel(tid string) {
-	fmt.Println("tunnel closing:", tid)
+	fmt.Println("relay server is closing tunnel by id:=", tid)
+
 	rs.cacheLocker.Lock()
-	defer rs.cacheLocker.Unlock()
 	var t, ok = rs.cache[tid]
 	if !ok {
+		rs.cacheLocker.Unlock()
 		return
 	}
-	t.Close()
 	delete(rs.cache, tid)
+	rs.cacheLocker.Unlock()
+
+	t.Close()
+}
+
+func (rs *Server) monitor() {
+	for {
+		select {
+		case tid := <-rs.tidErr:
+			rs.CloseTunnel(tid)
+
+		}
+	}
 }

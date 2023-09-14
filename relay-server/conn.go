@@ -21,7 +21,7 @@ type Conn struct {
 	errSig chan error
 }
 
-func newBasicConn(sid string) (*Conn, error) {
+func newBasicConn(sid string, errCh chan error) (*Conn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
 
 	var videoCodec = codec.NewRTPH264Codec(VideoRate)
@@ -66,17 +66,18 @@ func newBasicConn(sid string) (*Conn, error) {
 		audioReader: audioReader,
 		videoReader: videoReader,
 		videoTrack:  videoTrack,
-		errSig:      make(chan error, 2),
+		errSig:      errCh,
 	}
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Println("connection status changed:", connectionState.String())
 		conn.status = connectionState
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			conn.rtpStart()
 		}
 		if connectionState == webrtc.ICEConnectionStateFailed ||
 			connectionState == webrtc.ICEConnectionStateDisconnected {
-			conn.errSig <- fmt.Errorf("connection finiesh")
+			conn.errSig <- fmt.Errorf("connection status %s", connectionState.String())
 		}
 	})
 	fmt.Println("connection create success")
