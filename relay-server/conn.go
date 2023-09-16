@@ -2,7 +2,6 @@ package relay
 
 import (
 	"fmt"
-	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -24,14 +23,12 @@ type Conn struct {
 func newBasicConn(sid string, errCh chan error) (*Conn, error) {
 	var mediaEngine = &webrtc.MediaEngine{}
 
-	var videoCodec = codec.NewRTPH264Codec(VideoRate)
-	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
+	var meErr = mediaEngine.RegisterCodec(VideoParam, webrtc.RTPCodecTypeVideo)
 	if meErr != nil {
 		return nil, meErr
 	}
 
-	var audioCode = codec.NewRTPOpusCodec(AudioRate)
-	var acErr = mediaEngine.RegisterCodec(audioCode.RTPCodecParameters, webrtc.RTPCodecTypeAudio)
+	var acErr = mediaEngine.RegisterCodec(AudioParam, webrtc.RTPCodecTypeAudio)
 	if acErr != nil {
 		return nil, acErr
 	}

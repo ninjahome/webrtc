@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	VideoRate = 90000
-	AudioRate = 48000
+	VideoRate          = 90000
+	AudioRate          = 48000
+	NinjaAudioChannels = 1
 )
 
 var (
@@ -19,6 +20,25 @@ var (
 				URLs: []string{"stun:stun.l.google.com:19302"},
 			},
 		},
+	}
+	AudioParam = webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:     webrtc.MimeTypeOpus,
+			ClockRate:    AudioRate,
+			Channels:     NinjaAudioChannels,
+			SDPFmtpLine:  "minptime=10;useinbandfec=1",
+			RTCPFeedback: nil},
+		PayloadType: 111,
+	}
+
+	VideoParam = webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:     webrtc.MimeTypeH264,
+			ClockRate:    VideoRate,
+			Channels:     0,
+			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+			RTCPFeedback: nil},
+		PayloadType: 125,
 	}
 )
 

@@ -22,8 +22,11 @@ var (
 
 type CallBack interface {
 	NewVideoData(typ int, h264data []byte)
+	NewAudioData(data []byte)
 	AnswerCreated(string)
 	OfferCreated(string)
+	Connected()
+	Disconnected()
 }
 
 type AppInst struct {
@@ -70,6 +73,7 @@ func (ai *AppInst) RawMicroData() ([]byte, error) {
 
 func (ai *AppInst) EndCall(err error) {
 	fmt.Println("======>>>the call will be end:", err)
+	ai.callback.Disconnected()
 }
 
 func (ai *AppInst) AnswerForCallerCreated(answer string) {
@@ -81,6 +85,15 @@ func (ai *AppInst) OfferForCalleeCreated(offer string) {
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
 	return conn.H254Write(p, ai.callback.NewVideoData)
+}
+
+func (ai *AppInst) GotAudioData(p []byte) (n int, err error) {
+	ai.callback.NewAudioData(p)
+	return len(p), nil
+}
+
+func (ai *AppInst) CallStart() {
+	ai.callback.Connected()
 }
 
 /************************************************************************************************************

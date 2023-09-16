@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/ninjahome/webrtc/demo/internal"
+	"github.com/ninjahome/webrtc/relay-server"
+	"github.com/ninjahome/webrtc/utils"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
-	"github.com/pion/mediadevices/pkg/codec"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
@@ -16,14 +17,12 @@ import (
 func main() {
 	mediaEngine := &webrtc.MediaEngine{}
 
-	var videoCodec = codec.NewRTPH264Codec(90000)
-	var meErr = mediaEngine.RegisterCodec(videoCodec.RTPCodecParameters, webrtc.RTPCodecTypeVideo)
+	var meErr = mediaEngine.RegisterCodec(relay.VideoParam, webrtc.RTPCodecTypeVideo)
 	if meErr != nil {
 		internal.Must(meErr)
 	}
 
-	var audioCode = codec.NewRTPOpusCodec(48000)
-	var acErr = mediaEngine.RegisterCodec(audioCode.RTPCodecParameters, webrtc.RTPCodecTypeAudio)
+	var acErr = mediaEngine.RegisterCodec(relay.AudioParam, webrtc.RTPCodecTypeAudio)
 	if acErr != nil {
 		internal.Must(meErr)
 	}
@@ -101,11 +100,12 @@ func main() {
 		}
 	})
 	// Wait for the offer to be pasted
-	offer := webrtc.SessionDescription{}
-	internal.Decode(internal.MustReadStdin(), &offer)
-
+	var s = &relay.NinjaSdp{}
+	if err := utils.Decode(internal.MustReadStdin(), s); err != nil {
+		panic(err)
+	}
 	// Set the remote SessionDescription
-	err = peerConnection.SetRemoteDescription(offer)
+	err = peerConnection.SetRemoteDescription(*s.SDP)
 	if err != nil {
 		panic(err)
 	}
@@ -130,8 +130,14 @@ func main() {
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
 
+	var a = &relay.NinjaSdp{
+		Typ: relay.STAnswerToCaller,
+		SID: s.SID,
+		SDP: peerConnection.LocalDescription(),
+	}
+
 	// Output the answer in base64 so we can paste it in browser
-	fmt.Println(internal.Encode(*peerConnection.LocalDescription()))
+	fmt.Println(internal.Encode(a))
 
 	// Block forever
 	select {}

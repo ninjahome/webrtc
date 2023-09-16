@@ -65,7 +65,7 @@ func EndCall() {
 var foundKeyFrame = false //TODO:: refactor this variable
 
 func SendVideoToPeer(data []byte) error {
-	if _inst.p2pConn.IsConnected() == false {
+	if _inst.p2pConn == nil || _inst.p2pConn.IsConnected() == false {
 		return nil
 	}
 	var rawData = make([]byte, len(data))
@@ -90,6 +90,16 @@ func SendVideoToPeer(data []byte) error {
 	}
 	//fmt.Println("======>>>send camera data from app:", len(rawData))
 	_inst.localVideoPacket <- rawData
+	return nil
+}
+
+func SendAudioToPeer(data []byte) error {
+	if _inst.p2pConn == nil || _inst.p2pConn.IsConnected() == false {
+		return nil
+	}
+	var rawData = make([]byte, len(data))
+	copy(rawData, data)
+	_inst.localAudioPacket <- rawData
 	return nil
 }
 
