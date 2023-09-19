@@ -11,6 +11,7 @@ require (
 	github.com/pion/rtp v1.7.13
 	github.com/pion/stun v0.6.1
 	github.com/pion/webrtc/v3 v3.2.11
+	github.com/zaf/g711 v0.0.0-20220109202201-cf0017bf0359
 )
 
 require (
@@ -31,9 +32,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/image v0.8.0 // indirect
-	golang.org/x/mobile v0.0.0-20230818142238-7088062f872d // indirect
+	golang.org/x/image v0.12.0 // indirect
+	golang.org/x/mobile v0.0.0-20230906132913-2077a3224571 // indirect
 	golang.org/x/net v0.13.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

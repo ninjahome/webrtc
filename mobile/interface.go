@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/ninjahome/webrtc/relay-server"
+	"github.com/zaf/g711"
 	"time"
 )
 
@@ -157,4 +158,12 @@ func TestFileData(cb CallBack, data []byte) {
 		}
 
 	}
+}
+
+func AudioEncodePcmu(lpcm []byte) []byte {
+	return g711.EncodeUlaw(lpcm)
+}
+
+func AudioDecodePcmu(pcmu []byte) []byte {
+	return g711.DecodeUlaw(pcmu)
 }
