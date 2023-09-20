@@ -8,6 +8,7 @@ require (
 	github.com/pion/ice/v2 v2.3.8
 	github.com/pion/interceptor v0.1.17
 	github.com/pion/mediadevices v0.5.0
+	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.7.13
 	github.com/pion/stun v0.6.1
 	github.com/pion/webrtc/v3 v3.2.11
@@ -22,7 +23,6 @@ require (
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.7 // indirect
-	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
 	github.com/pion/sctp v1.8.7 // indirect
 	github.com/pion/sdp/v3 v3.0.6 // indirect

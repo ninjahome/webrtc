@@ -6,12 +6,29 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/pion/randutil"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 	"io"
 )
 
-const compress = false
+const (
+	runesAlpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	compress   = false
+)
+
+// Use global random generator to properly seed by crypto grade random.
+var globalMathRandomGenerator = randutil.NewMathRandomGenerator() // nolint:gochecknoglobals
+
+// MathRandAlpha generates a mathmatical random alphabet sequence of the requested length.
+func MathRandAlpha(n int) string {
+	return globalMathRandomGenerator.GenerateString(n, runesAlpha)
+}
+
+// RandUint32 generates a mathmatical random uint32.
+func RandUint32() uint32 {
+	return globalMathRandomGenerator.Uint32()
+}
 
 func Decode(in string, obj interface{}) error {
 	b, err := base64.StdEncoding.DecodeString(in)

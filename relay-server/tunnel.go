@@ -9,7 +9,7 @@ import (
 
 const (
 	VideoRate          = 90000
-	AudioRate          = 48000
+	AudioRate          = 44100
 	NinjaAudioChannels = 1
 )
 
@@ -23,12 +23,12 @@ var (
 	}
 	AudioParam = webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:     webrtc.MimeTypeOpus,
+			MimeType:     webrtc.MimeTypePCMU,
 			ClockRate:    AudioRate,
-			Channels:     NinjaAudioChannels,
-			SDPFmtpLine:  "minptime=10;useinbandfec=1",
+			Channels:     0,
+			SDPFmtpLine:  "",
 			RTCPFeedback: nil},
-		PayloadType: 111,
+		PayloadType: 0,
 	}
 
 	VideoParam = webrtc.RTPCodecParameters{

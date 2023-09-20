@@ -100,14 +100,17 @@ func SendAudioToPeer(data []byte) error {
 	}
 	var rawData = make([]byte, len(data))
 	copy(rawData, data)
-	_inst.localAudioPacket <- rawData
+
+	var pcmuData = g711.EncodeUlaw(rawData)
+
+	_inst.localAudioPacket <- pcmuData
 	return nil
 }
 
 func SetAnswerForOffer(answer string) {
 	var err = _inst.p2pConn.SetRemoteDesc(answer)
 	if err != nil {
-		fmt.Println("======>>>err:", err)
+		fmt.Println("======>>>SetAnswerForOffer err:", err)
 		_inst.EndCall(err)
 	}
 }

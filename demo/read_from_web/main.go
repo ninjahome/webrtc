@@ -5,11 +5,9 @@ import (
 	"github.com/ninjahome/webrtc/demo/internal"
 	"github.com/ninjahome/webrtc/relay-server"
 	"github.com/ninjahome/webrtc/utils"
-	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
-	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
+	"github.com/zaf/g711"
 	"os"
 	"strings"
 )
@@ -26,20 +24,11 @@ func main() {
 	if acErr != nil {
 		internal.Must(meErr)
 	}
-
-	i := &interceptor.Registry{}
-
-	intervalPliFactory, err := intervalpli.NewReceiverInterceptor()
-	if err != nil {
-		panic(err)
-	}
-	i.Add(intervalPliFactory)
-
-	if err = webrtc.RegisterDefaultInterceptors(mediaEngine, i); err != nil {
-		panic(err)
-	}
-
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(i))
+	//var errReg = mediaEngine.RegisterDefaultCodecs()
+	//if errReg != nil {
+	//	panic(errReg)
+	//}
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -48,16 +37,17 @@ func main() {
 			},
 		},
 	}
-	peerConnection, err := api.NewPeerConnection(config)
-	internal.Must(err)
+	var peerConnection, errPeer = api.NewPeerConnection(config)
+	internal.Must(errPeer)
 
-	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
+	if _, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
 		panic(err)
 	} else if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
 		panic(err)
 	}
 
-	oggFile, err := oggwriter.New("output.ogg", 48000, 2)
+	//oggFile, err := oggwriter.New("output.caf", 48000, 2)
+	var wavFile, err = os.OpenFile("output.caf", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	internal.Must(err)
 	ivfFile, err := h264writer.New("offer.h264")
 	internal.Must(err)
@@ -65,9 +55,21 @@ func main() {
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		codec := track.Codec()
 		fmt.Println("------>>>codec:", codec)
-		if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
-			fmt.Println("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)")
-			internal.SaveToDisk(oggFile, track)
+		if strings.EqualFold(codec.MimeType, webrtc.MimeTypePCMU) {
+			fmt.Println("Got MimeTypePCMU track, saving to disk as output.opus (48 kHz, 2 channels)")
+			//internal.SaveToDisk(oggFile, track)
+			for {
+
+				rtpPacket, _, err := track.ReadRTP()
+				if err != nil {
+					panic(err)
+				}
+				fmt.Println("------>>>writing rtpPacket:", rtpPacket.String())
+				_, err = wavFile.Write(g711.DecodeUlaw(rtpPacket.Payload))
+				if err != nil {
+					panic(err)
+				}
+			}
 
 		} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
 			fmt.Println("Got H264 track, saving to disk as offer.h264")
@@ -81,7 +83,7 @@ func main() {
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			fmt.Println("Ctrl+C the remote client to stop the demo")
 		} else if connectionState == webrtc.ICEConnectionStateFailed {
-			if closeErr := oggFile.Close(); closeErr != nil {
+			if closeErr := wavFile.Close(); closeErr != nil {
 				panic(closeErr)
 			}
 
