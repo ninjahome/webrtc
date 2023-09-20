@@ -24,10 +24,7 @@ func main() {
 	if acErr != nil {
 		internal.Must(meErr)
 	}
-	//var errReg = mediaEngine.RegisterDefaultCodecs()
-	//if errReg != nil {
-	//	panic(errReg)
-	//}
+
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 
 	config := webrtc.Configuration{
@@ -47,7 +44,7 @@ func main() {
 	}
 
 	//oggFile, err := oggwriter.New("output.caf", 48000, 2)
-	var wavFile, err = os.OpenFile("output.caf", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	var wavFile, err = os.OpenFile("output.wav", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 	internal.Must(err)
 	ivfFile, err := h264writer.New("offer.h264")
 	internal.Must(err)
@@ -59,13 +56,14 @@ func main() {
 			fmt.Println("Got MimeTypePCMU track, saving to disk as output.opus (48 kHz, 2 channels)")
 			//internal.SaveToDisk(oggFile, track)
 			for {
-
 				rtpPacket, _, err := track.ReadRTP()
 				if err != nil {
 					panic(err)
 				}
-				fmt.Println("------>>>writing rtpPacket:", rtpPacket.String())
-				_, err = wavFile.Write(g711.DecodeUlaw(rtpPacket.Payload))
+				var lpcm = g711.DecodeUlaw(rtpPacket.Payload)
+				fmt.Println("------>>>writing rtpPacket:", len(lpcm), ""+
+					"\n ", rtpPacket.String())
+				_, err = wavFile.Write(lpcm)
 				if err != nil {
 					panic(err)
 				}

@@ -25,10 +25,10 @@ var (
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:     webrtc.MimeTypePCMU,
 			ClockRate:    AudioRate,
-			Channels:     0,
+			Channels:     1,
 			SDPFmtpLine:  "",
 			RTCPFeedback: nil},
-		PayloadType: 0,
+		PayloadType: 111,
 	}
 
 	VideoParam = webrtc.RTPCodecParameters{

@@ -74,9 +74,6 @@ func createBasicConn(callback ConnectCallBack) (*NinjaRtpConn, error) {
 	}
 	conn.x264Writer = h264writer.NewWith(videoW)
 	var mediaEngine = &webrtc.MediaEngine{}
-	//if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
-	//	return nil, err
-	//}
 
 	var meErr = mediaEngine.RegisterCodec(relay.VideoParam, webrtc.RTPCodecTypeVideo)
 	if meErr != nil {

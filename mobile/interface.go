@@ -2,6 +2,7 @@ package webrtcLib
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/ninjahome/webrtc/relay-server"
@@ -102,7 +103,9 @@ func SendAudioToPeer(data []byte) error {
 	copy(rawData, data)
 
 	var pcmuData = g711.EncodeUlaw(rawData)
-
+	fmt.Println()
+	fmt.Println(hex.EncodeToString(pcmuData))
+	fmt.Println()
 	_inst.localAudioPacket <- pcmuData
 	return nil
 }
