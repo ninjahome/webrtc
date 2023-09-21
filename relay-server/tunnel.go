@@ -121,9 +121,6 @@ func (t *Tunnel) UpdateTunnel(sdp *NinjaSdp) (*webrtc.SessionDescription, error)
 
 func relayRtp(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP) error {
 
-	if local == nil {
-		return fmt.Errorf("local track is nil")
-	}
 	fmt.Println("start to relay track")
 	for {
 		rtp, _, readErr := remote.ReadRTP()
@@ -131,7 +128,10 @@ func relayRtp(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP) err
 			fmt.Println("read audio rtp err:", readErr)
 			return readErr
 		}
-
+		if local == nil {
+			fmt.Println("caller side has no peer track:")
+			continue
+		}
 		if writeErr := local.WriteRTP(rtp); writeErr != nil {
 			fmt.Println("write rtp err:", writeErr)
 			return writeErr
@@ -145,9 +145,20 @@ func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 	var codec = track.Codec()
 	var local *webrtc.TrackLocalStaticRTP
 	fmt.Println("caller's track success:", track.Codec().MimeType)
+	for {
+		select {
+		case <-t.calleeWait.Done():
+			goto startRelay
+		default:
+			_, _, readErr := track.ReadRTP()
+			if readErr != nil {
+				fmt.Println("caller reading err while waiting callee")
+				return
+			}
+		}
+	}
 
-	<-t.calleeWait.Done()
-
+startRelay:
 	if strings.EqualFold(codec.MimeType, webrtc.MimeTypePCMU) {
 		local = t.calleeConn.audioTrack
 	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
@@ -156,7 +167,7 @@ func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 		fmt.Println("unknown codec of track:", codec.MimeType)
 		return
 	}
-
+	t.calleeConn.rtpStart()
 	var err = relayRtp(track, local)
 	if err != nil {
 		fmt.Println("caller's track failed:", err, track.Codec().MimeType)
@@ -169,7 +180,6 @@ func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 	var codec = track.Codec()
 	var local *webrtc.TrackLocalStaticRTP
 	fmt.Println("callee 's track success", track.Codec().MimeType)
-	t.calleeOk()
 
 	if strings.EqualFold(codec.MimeType, webrtc.MimeTypePCMU) {
 		local = t.callerConn.audioTrack
@@ -179,6 +189,10 @@ func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 		fmt.Println("unknown codec of track:", codec.MimeType)
 		return
 	}
+
+	t.calleeOk()
+	t.calleeConn.rtpStart()
+
 	var err = relayRtp(track, local)
 	if err != nil {
 		fmt.Println("callee 's track failed:", err, track.Codec().MimeType)

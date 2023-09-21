@@ -14,7 +14,7 @@ type Conn struct {
 	videoTrack  *webrtc.TrackLocalStaticRTP
 	videoReader *webrtc.RTPSender
 
-	status webrtc.ICEConnectionState
+	status webrtc.PeerConnectionState
 	answer *webrtc.SessionDescription
 
 	errSig chan error
@@ -65,15 +65,11 @@ func newBasicConn(sid string, errCh chan error) (*Conn, error) {
 		videoTrack:  videoTrack,
 		errSig:      errCh,
 	}
-
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+	peerConnection.OnConnectionStateChange(func(connectionState webrtc.PeerConnectionState) {
 		fmt.Println("connection status changed:", connectionState.String())
 		conn.status = connectionState
-		if connectionState == webrtc.ICEConnectionStateConnected {
-			conn.rtpStart()
-		}
-		if connectionState == webrtc.ICEConnectionStateFailed ||
-			connectionState == webrtc.ICEConnectionStateDisconnected {
+		if connectionState == webrtc.PeerConnectionStateFailed ||
+			connectionState == webrtc.PeerConnectionStateClosed {
 			conn.errSig <- fmt.Errorf("connection status %s", connectionState.String())
 		}
 	})

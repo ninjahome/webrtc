@@ -287,7 +287,7 @@ func (nc *NinjaRtpConn) readLocalAudio() {
 			nc.callback.EndCall(err)
 			return
 		}
-		fmt.Println("======>>>local audio data got: ", len(data))
+		//fmt.Println("======>>>local audio data got: ", len(data))
 		if err := nc.audioTrack.WriteSample(media.Sample{Data: data, Duration: time.Second}); err != nil {
 			fmt.Println("========>>>write to rtp err:", err)
 			nc.callback.EndCall(err)
@@ -316,13 +316,12 @@ func (nc *NinjaRtpConn) IsConnected() bool {
 }
 
 func (nc *NinjaRtpConn) SetRemoteDesc(des string) error {
-	fmt.Println("========>>> 11111")
 	offer := relay.NinjaSdp{}
 	var errEC = utils.Decode(des, &offer)
 	if errEC != nil {
 		return errEC
 	}
-	fmt.Println(offer.SDP)
+	//fmt.Println(offer.SDP)
 	var pcErr = nc.conn.SetRemoteDescription(*offer.SDP)
 	if pcErr != nil {
 		return pcErr
