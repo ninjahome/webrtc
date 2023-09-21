@@ -37,6 +37,6 @@ type NinjaSdp struct {
 func (sdp *NinjaSdp) String() string {
 	var s = "\nsid\t:" + sdp.SID
 	s += "\ntype\t:" + sdp.Typ.String()
-	s += "\nwebrtc sdp\t:" + sdp.SDP.SDP
+	//s += "\nwebrtc sdp\t:" + sdp.SDP.SDP
 	return s
 }

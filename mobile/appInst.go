@@ -79,9 +79,6 @@ func (ai *AppInst) EndCall(err error) {
 func (ai *AppInst) AnswerForCallerCreated(answer string) {
 	ai.callback.AnswerCreated(answer)
 }
-func (ai *AppInst) OfferForCalleeCreated(offer string) {
-	ai.callback.OfferCreated(offer)
-}
 
 func (ai *AppInst) GotVideoData(p []byte) (n int, err error) {
 	return conn.H254Write(p, ai.callback.NewVideoData)

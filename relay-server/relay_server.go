@@ -54,8 +54,7 @@ func (rs *Server) StartSrv() {
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(str))
 
-		fmt.Println()
-		fmt.Println(str)
+		fmt.Println("tunnel create or update success: \n", str)
 		fmt.Println()
 	})
 
@@ -93,7 +92,8 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 			SDP: sdpA,
 		}
 
-		fmt.Println("create new tunnel success:", answer.String())
+		fmt.Println(answer.String())
+
 		return answer, nil
 
 	case STCalleeOffer:
@@ -114,7 +114,7 @@ func (rs *Server) prepareSession(sdp *NinjaSdp) (*NinjaSdp, error) {
 			SID: sdp.SID,
 			SDP: sdpA,
 		}
-		fmt.Println("update tunnel for callee success:", answer.String())
+		fmt.Println(answer.String())
 		return answer, nil
 	}
 

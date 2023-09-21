@@ -154,12 +154,6 @@ func CreateCallerDataConn(callback ConnectCallBack) (*NinjaDataConn, error) {
 		ndc.OnVideoDataChOpen(videDataCh)
 	})
 
-	var offer, OfErr = ndc.CreateCallerOffer()
-	if OfErr != nil {
-		return nil, OfErr
-	}
-	ndc.callback.OfferForCalleeCreated(offer)
-
 	ndc.conn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		fmt.Printf("Peer Connection State has changed: %s\n", state.String())
 		ndc.status = state

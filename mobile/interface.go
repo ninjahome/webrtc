@@ -6,6 +6,8 @@ import (
 	"github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/ninjahome/webrtc/relay-server"
 	"github.com/zaf/g711"
+	"io"
+	"net/http"
 	"time"
 )
 
@@ -16,33 +18,26 @@ import (
 *
 ************************************************************************************************************/
 
-func StartVideo(isCaller bool, cb CallBack) error {
+func StartCall(hasVideo, isCaller bool, sid string, cb CallBack) error {
 	initSdk(cb)
 	var typ = relay.STCallerOffer
 	if !isCaller {
 		typ = relay.STCalleeOffer
 	}
-	var peerConnection, err = conn.CreateCallerRtpConn(typ, _inst)
+
+	var peerConnection, err = conn.CreateCallerRtpConn(hasVideo, _inst)
 	if err != nil {
 		return err
 	}
+
 	_inst.p2pConn = peerConnection
 
-	return nil
-}
-
-func AnswerVideo(offerStr string, cb CallBack) error {
-	if len(offerStr) < 10 || cb == nil {
-		return fmt.Errorf("error parametor for start video")
+	var offer, errOffer = peerConnection.GetOffer(typ, "alice-to-bob")
+	if errOffer != nil {
+		return errOffer
 	}
-
-	initSdk(cb)
-
-	var peerConnection, err = conn.CreateCalleeRtpConn(offerStr, _inst)
-	if err != nil {
-		return err
-	}
-	_inst.p2pConn = peerConnection
+	//fmt.Println(offer)
+	_inst.callback.OfferCreated(offer) //TODO:: refactor this method
 
 	return nil
 }
@@ -100,9 +95,6 @@ func SendAudioToPeer(data []byte) error {
 	copy(rawData, data)
 
 	var pcmuData = g711.EncodeUlaw(rawData)
-	//fmt.Println()
-	//fmt.Println(hex.EncodeToString(pcmuData))
-	//fmt.Println()
 	_inst.localAudioPacket <- pcmuData
 	return nil
 }
@@ -115,62 +107,27 @@ func SetAnswerForOffer(answer string) {
 	}
 }
 
-/************************************************************************************************************
-*
-*
-*
-*
-************************************************************************************************************/
-
-func TestFileData(cb CallBack, data []byte) {
-
-	var startIdx = bytes.Index(data, conn.VideoAvcStart)
-	if startIdx != 0 {
-		fmt.Println("======>>> invalid h264 stream")
-		return
-	}
-	sleepTime := time.Millisecond * time.Duration(33)
-	data = data[conn.VideoAvcLen:]
-	for {
-		var typ = int(data[0] & conn.H264TypMask)
-		if typ == 7 || typ == 8 {
-			startIdx = bytes.Index(data, conn.VideoAvcStart)
-			if startIdx < 0 {
-				fmt.Println("======>>> find sps or pps err")
-				return
-			}
-			var spsOrPssData = data[0:startIdx]
-			cb.NewVideoData(typ, spsOrPssData)
-			data = data[startIdx+conn.VideoAvcLen:]
-			continue
-
-		}
-		if typ > 0 {
-			startIdx = bytes.Index(data, conn.VideoAvcStart)
-			if startIdx < 0 {
-				fmt.Println("======>>> found last frame")
-				cb.NewVideoData(typ, data)
-				return
-			}
-			var vdata = data[0:startIdx]
-			cb.NewVideoData(typ, vdata)
-			time.Sleep(sleepTime)
-
-			data = data[startIdx+conn.VideoAvcLen:]
-			continue
-		}
-
-	}
+var relayClient = &http.Client{
+	Timeout: time.Second * 15,
+	Transport: &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	},
 }
 
-func AudioEncodePcmu(lpcm []byte) []byte {
-	var encoded = g711.EncodeUlaw(lpcm)
-	//fmt.Println(hex.EncodeToString(encoded))
-	return encoded
-}
-
-func AudioDecodePcmu(pcmu []byte) []byte {
-	var decoded = g711.DecodeUlaw(pcmu)
-	//fmt.Println(hex.EncodeToString(decoded))
-	return decoded
+func SdpToRelay(url, sdp string) string {
+	var reader = bytes.NewBuffer([]byte(sdp))
+	var response, err = relayClient.Post(url, "application/json", reader)
+	if err != nil {
+		fmt.Println("======>>> post to relay server err:", err)
+		return ""
+	}
+	defer response.Body.Close()
+	var body, errRes = io.ReadAll(response.Body)
+	if errRes != nil {
+		fmt.Println("======>>> read response body err:", err)
+		return ""
+	}
+	return string(body)
 }

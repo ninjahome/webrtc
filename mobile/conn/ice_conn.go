@@ -357,11 +357,11 @@ func CreateCallerIceConn(callTyp CallType, back ConnectCallBack) (*NinjaIceConn,
 	}
 	nic.isCaller = true
 
-	var offer, errOff = nic.createParam()
-	if errOff != nil {
-		return nil, errOff
-	}
-	back.OfferForCalleeCreated(offer)
+	//var offer, errOff = nic.createParam()
+	//if errOff != nil {
+	//	return nil, errOff
+	//}
+	//back.OfferForCalleeCreated(offer)
 
 	return nic, nil
 }
