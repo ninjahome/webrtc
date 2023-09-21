@@ -148,7 +148,7 @@ func (t *Tunnel) OnCallerTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 
 	<-t.calleeWait.Done()
 
-	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+	if strings.EqualFold(codec.MimeType, webrtc.MimeTypePCMU) {
 		local = t.calleeConn.audioTrack
 	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
 		local = t.calleeConn.videoTrack
@@ -171,7 +171,7 @@ func (t *Tunnel) OnCalleeTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPRe
 	fmt.Println("callee 's track success", track.Codec().MimeType)
 	t.calleeOk()
 
-	if strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+	if strings.EqualFold(codec.MimeType, webrtc.MimeTypePCMU) {
 		local = t.callerConn.audioTrack
 	} else if strings.EqualFold(codec.MimeType, webrtc.MimeTypeH264) {
 		local = t.callerConn.videoTrack

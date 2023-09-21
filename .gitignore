@@ -19,3 +19,4 @@
 
 # Go workspace file
 go.work
+/demo/send_to_web/send_to_web

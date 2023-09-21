@@ -18,7 +18,6 @@ import (
 
 func StartVideo(isCaller bool, cb CallBack) error {
 	initSdk(cb)
-	// CreateCallerIceConn(CallTypeVideo, _inst) //CreateCallerDataConn(_inst) //CreateCallerRtpConn(_inst)
 	var typ = relay.STCallerOffer
 	if !isCaller {
 		typ = relay.STCalleeOffer
@@ -38,7 +37,6 @@ func AnswerVideo(offerStr string, cb CallBack) error {
 	}
 
 	initSdk(cb)
-	// CreateCalleeIceConn(CallTypeVideo, offerStr, _inst) //CreateCalleeDataConn(offerStr, _inst) //CreateCalleeRtpConn(offerStr, _inst)
 
 	var peerConnection, err = conn.CreateCalleeRtpConn(offerStr, _inst)
 	if err != nil {
