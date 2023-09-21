@@ -9,7 +9,7 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
-	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
+	"github.com/zaf/g711"
 	"time"
 )
 
@@ -259,16 +259,12 @@ func (nc *NinjaRtpConn) consumeInVideo(iceConnectedCtx context.Context) {
 func (nc *NinjaRtpConn) consumeInAudio(ceConnectedCtx context.Context) {
 	<-ceConnectedCtx.Done()
 	fmt.Println("======>>>start to reading remote audio data")
-	var audioW = &RawWriter{Writer: nc.callback.GotAudioData}
-	var oggWriter, err = oggwriter.NewWith(audioW, relay.AudioRate, relay.NinjaAudioChannels)
-	if err != nil {
-		nc.callback.EndCall(err)
-		return
-	}
 	for {
 		select {
 		case pkt := <-nc.inAudioBuf:
-			if err := oggWriter.WriteRTP(pkt); err != nil {
+			var lpcm = g711.DecodeUlaw(pkt.Payload)
+			var _, err = nc.callback.GotAudioData(lpcm)
+			if err != nil {
 				fmt.Println("========>>>write audio rtp err:", err)
 				nc.callback.EndCall(err)
 				return

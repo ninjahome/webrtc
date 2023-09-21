@@ -2,7 +2,6 @@ package webrtcLib
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"github.com/ninjahome/webrtc/mobile/conn"
 	"github.com/ninjahome/webrtc/relay-server"
@@ -103,9 +102,9 @@ func SendAudioToPeer(data []byte) error {
 	copy(rawData, data)
 
 	var pcmuData = g711.EncodeUlaw(rawData)
-	fmt.Println()
-	fmt.Println(hex.EncodeToString(pcmuData))
-	fmt.Println()
+	//fmt.Println()
+	//fmt.Println(hex.EncodeToString(pcmuData))
+	//fmt.Println()
 	_inst.localAudioPacket <- pcmuData
 	return nil
 }
@@ -167,9 +166,13 @@ func TestFileData(cb CallBack, data []byte) {
 }
 
 func AudioEncodePcmu(lpcm []byte) []byte {
-	return g711.EncodeUlaw(lpcm)
+	var encoded = g711.EncodeUlaw(lpcm)
+	//fmt.Println(hex.EncodeToString(encoded))
+	return encoded
 }
 
 func AudioDecodePcmu(pcmu []byte) []byte {
-	return g711.DecodeUlaw(pcmu)
+	var decoded = g711.DecodeUlaw(pcmu)
+	//fmt.Println(hex.EncodeToString(decoded))
+	return decoded
 }

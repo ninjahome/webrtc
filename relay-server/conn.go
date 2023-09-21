@@ -39,7 +39,7 @@ func newBasicConn(sid string, errCh chan error) (*Conn, error) {
 		return nil, pcErr
 	}
 
-	var audioTrack, errAT = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", sid)
+	var audioTrack, errAT = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", sid)
 	if errAT != nil {
 		return nil, errAT
 	}

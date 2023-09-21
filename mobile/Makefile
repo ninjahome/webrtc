@@ -20,7 +20,7 @@ android:
 	gomobile bind -v -o $(BINDIR)/webrtcLib.aar -target=android -ldflags="$(LD_FLAGS)" github.com/ninjahome/webrtc/mobile
 
 ios:pbs
-	gomobile bind -v -o $(BINDIR)/webrtcLib.xcframework -target=ios  -ldflags="$(LD_FLAGS)"  github.com/ninjahome/webrtc/mobile
+	gomobile bind -x -v -trimpath -work -o $(BINDIR)/webrtcLib.xcframework -target=ios  -ldflags="$(LD_FLAGS)"  github.com/ninjahome/webrtc/mobile
 
 sim:pbs
 	gomobile bind -v -o $(BINDIR)/webrtcLib.xcframework -ldflags="$(LD_FLAGS)" -target=iossimulator github.com/ninjahome/webrtc/mobile
