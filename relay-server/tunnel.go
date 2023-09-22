@@ -121,7 +121,7 @@ func (t *Tunnel) UpdateTunnel(sdp *NinjaSdp) (*webrtc.SessionDescription, error)
 
 func relayRtp(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP) error {
 
-	fmt.Println("start to relay track")
+	fmt.Println("start to relay track", remote.Codec().MimeType)
 	for {
 		rtp, _, readErr := remote.ReadRTP()
 		if readErr != nil {

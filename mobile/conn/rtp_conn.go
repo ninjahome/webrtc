@@ -77,6 +77,7 @@ func createBasicConn(hasVideo bool, callback ConnectCallBack) (*NinjaRtpConn, er
 	}
 	var mediaEngine = &webrtc.MediaEngine{}
 	if hasVideo {
+		//fmt.Println("======>>>has video ability")
 		var videoW = &RawWriter{
 			Writer: callback.GotVideoData,
 		}
@@ -100,6 +101,8 @@ func createBasicConn(hasVideo bool, callback ConnectCallBack) (*NinjaRtpConn, er
 	}
 
 	if hasVideo {
+		//fmt.Println("======>>>creating video track")
+
 		var videoOutputTrack, otErr = webrtc.NewTrackLocalStaticSample(
 			webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264},
 			"video-"+utils.MathRandAlpha(16),
@@ -191,6 +194,8 @@ func (nc *NinjaRtpConn) GetOffer(typ relay.SdpTyp, sessionID string) (string, er
 func (nc *NinjaRtpConn) relayStart() {
 
 	if nc.hasVideo {
+		//fmt.Println("======>>>start video relay")
+
 		go readRtcp(nc.videoRtcp)
 		go nc.readLocalVideo()
 		go nc.consumeInVideo()
