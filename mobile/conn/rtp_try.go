@@ -28,7 +28,7 @@ func CreateCalleeRtpConn(hasVideo bool, offerStr string, callback ConnectCallBac
 		}
 		if s == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
-			nc.callback.EndCall(fmt.Errorf("connection status:%s", s))
+			nc.callback.EndCallByInnerErr(fmt.Errorf("connection status:%s", s))
 		}
 	})
 

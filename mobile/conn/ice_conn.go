@@ -257,7 +257,7 @@ func (nic *NinjaIceConn) writeVideoToRemote(dType QCDataTye, conn *QueueConn) {
 
 	var err = <-errCh
 	if err != nil {
-		nic.callback.EndCall(err)
+		nic.callback.EndCallByInnerErr(err)
 		conn.Close()
 		nic.Close()
 		return
@@ -267,7 +267,7 @@ func (nic *NinjaIceConn) writeVideoToRemote(dType QCDataTye, conn *QueueConn) {
 func (nic *NinjaIceConn) readVideoFromRemote(conn *QueueConn) {
 	var err = conn.ReadFrameData(nic.inVideoCache)
 	if err != nil {
-		nic.callback.EndCall(err)
+		nic.callback.EndCallByInnerErr(err)
 		conn.Close()
 		nic.Close()
 	}
@@ -281,13 +281,13 @@ func (nic *NinjaIceConn) writeVideoDataToApp() {
 		var data, ok = <-nic.inVideoCache
 		if !ok {
 			nic.Close()
-			nic.callback.EndCall(fmt.Errorf("data stream closed"))
+			nic.callback.EndCallByInnerErr(fmt.Errorf("data stream closed"))
 			return
 		}
 		//fmt.Println("======>>>data from remote:", len(data), hex.EncodeToString(data))
 		var _, err = nic.callback.GotVideoData(data)
 		if err != nil {
-			nic.callback.EndCall(err)
+			nic.callback.EndCallByInnerErr(err)
 			nic.Close()
 			return
 		}
@@ -305,7 +305,7 @@ func (nic *NinjaIceConn) createAgent(aTyp AgentType, back ConnectCallBack) (*ice
 			aTyp.String(), state.String())
 		nic.status[aTyp] = state
 		if state == ice.ConnectionStateFailed {
-			back.EndCall(fmt.Errorf("ice connection failed"))
+			back.EndCallByInnerErr(fmt.Errorf("ice connection failed"))
 			return
 		}
 	})

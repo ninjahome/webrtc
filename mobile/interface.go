@@ -42,12 +42,20 @@ func StartCall(hasVideo, isCaller bool, sid string, cb CallBack) error {
 	return nil
 }
 
-func EndCall() {
-	_inst.appLocker.Lock()
-	defer _inst.appLocker.Unlock()
-	close(_inst.localVideoPacket)
-	close(_inst.localAudioPacket)
+func EndCallByController() {
+	if _inst.p2pConn == nil {
+		return
+	}
 	_inst.p2pConn.Close()
+	_inst.p2pConn = nil
+	if _inst.localVideoPacket != nil {
+		close(_inst.localVideoPacket)
+		_inst.localVideoPacket = nil
+	}
+	if _inst.localAudioPacket != nil {
+		close(_inst.localAudioPacket)
+		_inst.localAudioPacket = nil
+	}
 }
 
 /************************************************************************************************************
@@ -100,10 +108,14 @@ func SendAudioToPeer(data []byte) error {
 }
 
 func SetAnswerForOffer(answer string) {
+	if _inst.p2pConn == nil {
+		fmt.Println("======>>>[SetAnswerForOffer] connection closed")
+		return
+	}
 	var err = _inst.p2pConn.SetRemoteDesc(answer)
 	if err != nil {
 		fmt.Println("======>>>SetAnswerForOffer err:", err)
-		_inst.EndCall(err)
+		_inst.EndCallByInnerErr(err)
 	}
 }
 

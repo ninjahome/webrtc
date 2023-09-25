@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/ninjahome/webrtc/mobile/conn"
 	"io"
-	"sync"
 )
 
 const ()
@@ -30,8 +29,6 @@ type CallBack interface {
 }
 
 type AppInst struct {
-	appLocker sync.RWMutex
-
 	callback CallBack
 	p2pConn  conn.NinjaConn
 
@@ -40,9 +37,6 @@ type AppInst struct {
 }
 
 func initSdk(cb CallBack) {
-	_inst.appLocker.Lock()
-	defer _inst.appLocker.Unlock()
-
 	_inst.localVideoPacket = make(chan []byte, conn.MaxInBufferSize)
 	_inst.localAudioPacket = make(chan []byte, conn.MaxInBufferSize)
 	_inst.callback = cb
@@ -71,9 +65,18 @@ func (ai *AppInst) RawMicroData() ([]byte, error) {
 	return pkt, nil
 }
 
-func (ai *AppInst) EndCall(err error) {
+func (ai *AppInst) EndCallByInnerErr(err error) {
 	fmt.Println("======>>>the call will be end:", err)
 	ai.callback.Disconnected()
+
+	if _inst.localVideoPacket != nil {
+		close(_inst.localVideoPacket)
+		_inst.localVideoPacket = nil
+	}
+	if _inst.localAudioPacket != nil {
+		close(_inst.localAudioPacket)
+		_inst.localAudioPacket = nil
+	}
 }
 
 func (ai *AppInst) AnswerForCallerCreated(answer string) {

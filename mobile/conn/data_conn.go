@@ -37,7 +37,7 @@ func (ndc *NinjaDataConn) CreateCallerOffer() (string, error) {
 func (ndc *NinjaDataConn) OnVideoDataChOpen(channel *webrtc.DataChannel) {
 	var raw, dErr = channel.Detach()
 	if dErr != nil {
-		ndc.callback.EndCall(dErr)
+		ndc.callback.EndCallByInnerErr(dErr)
 		return
 	}
 	go ndc.readingRemoteVideoData(raw)
@@ -56,7 +56,7 @@ func (ndc *NinjaDataConn) readingRemoteVideoData(raw datachannel.ReadWriteCloser
 	var reader = &H264Conn{connReader: raw}
 	var err = reader.LoopRead(ndc.inCache)
 	if err != nil {
-		ndc.callback.EndCall(fmt.Errorf("read video finished"))
+		ndc.callback.EndCallByInnerErr(fmt.Errorf("read video finished"))
 		_ = raw.Close()
 	}
 	return
@@ -66,13 +66,13 @@ func (ndc *NinjaDataConn) writeRemoteDataToApp() {
 	for {
 		var data, ok = <-ndc.inCache
 		if !ok {
-			ndc.callback.EndCall(fmt.Errorf("no more remote data"))
+			ndc.callback.EndCallByInnerErr(fmt.Errorf("no more remote data"))
 			return
 		}
 
 		var _, err = ndc.callback.GotVideoData(data)
 		if err != nil {
-			ndc.callback.EndCall(err)
+			ndc.callback.EndCallByInnerErr(err)
 			return
 		}
 	}
@@ -81,7 +81,7 @@ func (ndc *NinjaDataConn) writeRemoteDataToApp() {
 func (ndc *NinjaDataConn) writeVideoDataToRemote(raw datachannel.ReadWriteCloser) {
 	var err = FrameWrite(ndc.callback.RawCameraData, raw)
 	if err != nil {
-		ndc.callback.EndCall(err)
+		ndc.callback.EndCallByInnerErr(err)
 		_ = raw.Close()
 	}
 }
@@ -159,7 +159,7 @@ func CreateCallerDataConn(callback ConnectCallBack) (*NinjaDataConn, error) {
 		ndc.status = state
 		if state == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
-			ndc.callback.EndCall(fmt.Errorf("connection failed"))
+			ndc.callback.EndCallByInnerErr(fmt.Errorf("connection failed"))
 		}
 	})
 
@@ -194,7 +194,7 @@ func CreateCalleeDataConn(offerStr string, callback ConnectCallBack) (*NinjaData
 		ndc.status = s
 		if s == webrtc.PeerConnectionStateFailed {
 			fmt.Println("Peer Connection has gone to failed exiting")
-			callback.EndCall(fmt.Errorf("connection failed"))
+			callback.EndCallByInnerErr(fmt.Errorf("connection failed"))
 		}
 	})
 	var answer, errAnswer = ndc.createAnswerForOffer()
